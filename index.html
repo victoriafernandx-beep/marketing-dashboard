@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Dashboard de Analytics de Marketing - Consolidação de dados de múltiplos CRMs">
+  <title>Marketing Analytics Dashboard</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Chart.js -->
+  <!-- PapaParse -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- html2canvas for screenshots -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <!-- Icons (Material Symbols) -->
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+</head>
+
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="container">
+      <div class="header-content">
+        <div class="logo">
+          <div class="logo-icon">📊</div>
+          <span>Marketing Analytics</span>
+        </div>
+
+        <div class="header-actions">
+          <button class="btn-icon" id="presentation-mode-toggle" title="Modo Apresentação">
+            <span class="material-symbols-outlined">slideshow</span>
+          </button>
+
+          <button class="btn-icon" id="theme-toggle" title="Alternar tema">
+            <span class="material-symbols-outlined">dark_mode</span>
+          </button>
+
+          <button class="btn btn-secondary" id="export-all-charts-btn">
+            <span class="material-symbols-outlined">photo_library</span>
+            Exportar Gráficos
+          </button>
+
+          <button class="btn btn-primary" id="clear-data-btn">
+            <span class="material-symbols-outlined">refresh</span>
+            Limpar Dados
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Upload Section -->
+    <section class="upload-section" id="upload-section">
+      <div class="upload-area" id="upload-area">
+        <div class="upload-icon">📁</div>
+        <h2 class="upload-title">Arraste seus arquivos CSV aqui</h2>
+        <p class="upload-subtitle">ou clique para selecionar arquivos</p>
+        <button class="btn btn-primary" type="button">
+          <span class="material-symbols-outlined">upload_file</span>
+          Selecionar Arquivos CSV
+        </button>
+        <input type="file" id="file-input" class="file-input" accept=".csv" multiple>
+      </div>
+    </section>
+
+    <!-- Filters Section -->
+    <section class="filters-section hidden" id="filters-section">
+      <div class="filters-container">
+        <div class="filter-group">
+          <label for="date-range-filter">Período</label>
+          <select id="date-range-filter" class="filter-select">
+            <option value="all">Todo o período</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="90">Últimos 90 dias</option>
+            <option value="180">Últimos 6 meses</option>
+            <option value="365">Último ano</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="status-filter">Status</label>
+          <select id="status-filter" class="filter-select">
+            <option value="all">Todos</option>
+            <option value="completed">Concluído</option>
+            <option value="sent">Enviado</option>
+            <option value="scheduled">Agendado</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="campaign-type-filter">Tipo</label>
+          <select id="campaign-type-filter" class="filter-select">
+            <option value="all">Todos</option>
+            <option value="email">Email Marketing</option>
+            <option value="automation">Automação</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- Metrics Section -->
+    <section class="metrics-section hidden" id="metrics-section">
+      <div class="metrics-grid" id="metrics-grid">
+        <!-- Metrics cards will be dynamically generated -->
+      </div>
+    </section>
+
+    <!-- Executive Summary Section -->
+    <section class="executive-summary-section hidden" id="executive-summary-section">
+      <div class="section-header">
+        <h2 class="section-title">📋 Resumo Executivo</h2>
+        <div class="header-actions">
+          <button class="btn btn-secondary" id="copy-summary-btn">
+            <span class="material-symbols-outlined">content_copy</span>
+            Copiar Resumo
+          </button>
+          <button class="btn btn-secondary" id="export-summary-img-btn">
+            <span class="material-symbols-outlined">image</span>
+            Exportar Imagem
+          </button>
+        </div>
+      </div>
+
+      <div class="executive-summary-card" id="executive-summary-card">
+        <!-- Summary will be dynamically generated -->
+      </div>
+    </section>
+
+    <!-- Insights Section -->
+    <section class="insights-section hidden" id="insights-section">
+      <div class="section-header">
+        <h2 class="section-title">📊 Análise Inteligente</h2>
+        <button class="btn btn-secondary" id="export-insights-img-btn">
+          <span class="material-symbols-outlined">image</span>
+          Exportar Imagem
+        </button>
+      </div>
+
+      <div class="insights-grid" id="insights-grid">
+        <!-- Insights will be dynamically generated -->
+      </div>
+    </section>
+
+    <!-- Charts Section -->
+    <section class="charts-section hidden" id="charts-section">
+      <div class="charts-grid">
+        <!-- Timeline Chart -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3 class="chart-title">Linha do Tempo</h3>
+            <div class="chart-actions">
+              <select class="filter-select" id="timeline-metric">
+                <option value="opens">Aberturas</option>
+                <option value="clicks">Cliques</option>
+                <option value="conversions">Conversões</option>
+              </select>
+              <button class="btn-icon export-chart-btn" data-chart="timeline-chart" title="Exportar gráfico">
+                <span class="material-symbols-outlined">image</span>
+              </button>
+            </div>
+          </div>
+          <div class="chart-container">
+            <canvas id="timeline-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Funnel Chart -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3 class="chart-title">Funil de Conversão</h3>
+            <div class="chart-actions">
+              <button class="btn-icon export-chart-btn" data-chart="funnel-chart" title="Exportar gráfico">
+                <span class="material-symbols-outlined">image</span>
+              </button>
+            </div>
+          </div>
+          <div class="chart-container">
+            <canvas id="funnel-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Top Campaigns Chart -->
+        <div class="chart-card full-width">
+          <div class="chart-header">
+            <h3 class="chart-title">Top Campanhas</h3>
+            <div class="chart-actions">
+              <select class="filter-select" id="top-campaigns-metric">
+                <option value="openRate">Taxa de Abertura</option>
+                <option value="clickRate">CTR</option>
+                <option value="conversions">Conversões</option>
+                <option value="revenue">Receita</option>
+              </select>
+              <button class="btn-icon export-chart-btn" data-chart="top-campaigns-chart" title="Exportar gráfico">
+                <span class="material-symbols-outlined">image</span>
+              </button>
+            </div>
+          </div>
+          <div class="chart-container">
+            <canvas id="top-campaigns-chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Monthly Performance Section -->
+    <section class="monthly-section hidden" id="monthly-section">
+      <div class="section-header">
+        <h2 class="section-title">📅 Desempenho Mensal</h2>
+        <button class="btn btn-secondary" id="export-monthly-img-btn">
+          <span class="material-symbols-outlined">image</span>
+          Exportar Imagem
+        </button>
+      </div>
+
+      <div class="monthly-comparison" id="monthly-comparison">
+        <!-- Monthly cards will be dynamically generated -->
+      </div>
+
+      <div class="chart-card mt-3">
+        <div class="chart-header">
+          <h3 class="chart-title">Evolução Mês a Mês</h3>
+          <div class="chart-actions">
+            <select class="filter-select" id="monthly-metric">
+              <option value="openRate">Taxa de Abertura</option>
+              <option value="clickRate">Taxa de Cliques</option>
+              <option value="conversions">Conversões</option>
+              <option value="sent">Emails Enviados</option>
+            </select>
+            <button class="btn-icon" id="export-monthly-chart-btn" title="Exportar gráfico">
+              <span class="material-symbols-outlined">image</span>
+            </button>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="monthly-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="table-controls">
+        <input type="text" class="search-input" id="search-input" placeholder="🔍 Buscar campanhas...">
+
+        <button class="btn btn-secondary" id="export-csv-btn">
+          <span class="material-symbols-outlined">table_view</span>
+          Exportar CSV
+        </button>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="data-table" id="campaigns-table">
+          <thead>
+            <tr>
+              <th data-sort="name">Campanha</th>
+              <th data-sort="crm">CRM</th>
+              <th data-sort="date">Data</th>
+              <th data-sort="sent">Enviados</th>
+              <th data-sort="opens">Aberturas</th>
+              <th data-sort="openRate">Taxa Abertura</th>
+              <th data-sort="clicks">Cliques</th>
+              <th data-sort="clickRate">CTR</th>
+              <th data-sort="conversions">Conversões</th>
+              <th data-sort="status">Status</th>
+            </tr>
+          </thead>
+          <tbody id="campaigns-tbody">
+            <!-- Rows will be dynamically generated -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Revenue by Channel Section -->
+    <section class="insights-section hidden" id="revenue-section">
+      <div class="section-header">
+        <h2 class="section-title">💰 Receita por Canal</h2>
+      </div>
+
+      <div class="revenue-channels-grid" id="revenue-channels-grid">
+        <!-- Revenue breakdown will be dynamically generated -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p>Marketing Analytics Dashboard © 2025 | Dados armazenados localmente no seu navegador</p>
+    </div>
+  </footer>
+
+  <!-- Main App Script -->
+  <script src="app.js"></script>
+
+</body>
+
+</html>
