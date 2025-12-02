@@ -3,10 +3,377 @@
 // Main Application Logic
 // ============================================
 
+// ============================================
+// CSV MAPPER CLASS
+// Handles dynamic CSV column mapping
+// ============================================
+class CSVMapper {
+  constructor() {
+    this.templates = this.loadTemplates();
+    this.currentMapping = null;
+  }
+
+  // ============================================
+  // TEMPLATE MANAGEMENT
+  // ============================================
+
+  getDefaultTemplates() {
+    return {
+      'edrone': {
+        name: 'Edrone',
+        mapping: {
+          campaignName: 'TITULO',
+          date: 'DATA',
+          sent: 'ENVIO',
+          opens: 'ABERTO',
+          clicks: 'CLIQUE',
+          conversions: 'PEDIDO',
+          revenue: 'RECEITA',
+          engagementType: 'CAMPANHA'
+        },
+        labels: {
+          sent: 'Enviados',
+          opens: 'Aberturas',
+          clicks: 'Cliques',
+          conversions: 'Pedidos',
+          revenue: 'Receita'
+        }
+      },
+      'rd_station': {
+        name: 'RD Station',
+        mapping: {
+          campaignName: 'nome',
+          date: 'data',
+          sent: 'emails_enviados',
+          opens: 'aberturas',
+          clicks: 'cliques',
+          conversions: 'conversoes',
+          revenue: 'receita'
+        },
+        labels: {
+          sent: 'Emails Enviados',
+          opens: 'Aberturas',
+          clicks: 'Cliques',
+          conversions: 'Conversões',
+          revenue: 'Receita'
+        }
+      },
+      'google_ads': {
+        name: 'Google Ads',
+        mapping: {
+          campaignName: 'Campaign',
+          date: 'Day',
+          sent: 'Impressions',
+          clicks: 'Clicks',
+          conversions: 'Conversions',
+          revenue: 'Cost'
+        },
+        labels: {
+          sent: 'Impressões',
+          opens: 'Visualizações',
+          clicks: 'Cliques',
+          conversions: 'Conversões',
+          revenue: 'Custo'
+        },
+        calculations: {
+          clickRate: 'clicks / sent * 100'
+        }
+      },
+      'facebook_ads': {
+        name: 'Facebook Ads',
+        mapping: {
+          campaignName: 'Campaign name',
+          date: 'Reporting starts',
+          sent: 'Reach',
+          opens: 'Post engagement',
+          clicks: 'Link clicks',
+          conversions: 'Purchases',
+          revenue: 'Amount spent'
+        },
+        labels: {
+          sent: 'Alcance',
+          opens: 'Engajamento',
+          clicks: 'Cliques no Link',
+          conversions: 'Compras',
+          revenue: 'Valor Gasto'
+        }
+      },
+      'mailchimp': {
+        name: 'Mailchimp',
+        mapping: {
+          campaignName: 'Campaign Title',
+          date: 'Send Time',
+          sent: 'Emails Sent',
+          opens: 'Unique Opens',
+          clicks: 'Unique Clicks',
+          conversions: 'E-Commerce Orders',
+          revenue: 'E-Commerce Revenue'
+        },
+        labels: {
+          sent: 'Emails Enviados',
+          opens: 'Aberturas Únicas',
+          clicks: 'Cliques Únicos',
+          conversions: 'Pedidos',
+          revenue: 'Receita'
+        }
+      }
+    };
+  }
+
+  loadTemplates() {
+    const stored = localStorage.getItem('csv_mapping_templates');
+    const defaultTemplates = this.getDefaultTemplates();
+
+    if (stored) {
+      try {
+        const customTemplates = JSON.parse(stored);
+        return { ...defaultTemplates, ...customTemplates };
+      } catch (e) {
+        console.error('Error loading templates:', e);
+        return defaultTemplates;
+      }
+    }
+
+    return defaultTemplates;
+  }
+
+  saveTemplate(templateId, template) {
+    const stored = localStorage.getItem('csv_mapping_templates');
+    let customTemplates = {};
+
+    if (stored) {
+      try {
+        customTemplates = JSON.parse(stored);
+      } catch (e) {
+        console.error('Error parsing stored templates:', e);
+      }
+    }
+
+    customTemplates[templateId] = template;
+    localStorage.setItem('csv_mapping_templates', JSON.stringify(customTemplates));
+    this.templates = this.loadTemplates();
+  }
+
+  deleteTemplate(templateId) {
+    const stored = localStorage.getItem('csv_mapping_templates');
+    if (!stored) return;
+
+    try {
+      const customTemplates = JSON.parse(stored);
+      delete customTemplates[templateId];
+      localStorage.setItem('csv_mapping_templates', JSON.stringify(customTemplates));
+      this.templates = this.loadTemplates();
+    } catch (e) {
+      console.error('Error deleting template:', e);
+    }
+  }
+
+  // ============================================
+  // COLUMN DETECTION
+  // ============================================
+
+  detectColumnTypes(headers, sampleRows) {
+    const types = {};
+
+    headers.forEach(header => {
+      const values = sampleRows.map(row => row[header]).filter(v => v !== null && v !== undefined && v !== '');
+
+      if (values.length === 0) {
+        types[header] = 'unknown';
+        return;
+      }
+
+      // Check if it's a date
+      const dateCount = values.filter(v => this.isDate(v)).length;
+      if (dateCount / values.length > 0.7) {
+        types[header] = 'date';
+        return;
+      }
+
+      // Check if it's a number
+      const numberCount = values.filter(v => this.isNumber(v)).length;
+      if (numberCount / values.length > 0.7) {
+        types[header] = 'number';
+        return;
+      }
+
+      // Check if it's a percentage
+      const percentCount = values.filter(v => this.isPercentage(v)).length;
+      if (percentCount / values.length > 0.7) {
+        types[header] = 'percentage';
+        return;
+      }
+
+      // Default to text
+      types[header] = 'text';
+    });
+
+    return types;
+  }
+
+  isDate(value) {
+    if (!value) return false;
+    const str = String(value).trim();
+
+    // Common date patterns
+    const datePatterns = [
+      /^\d{4}-\d{2}-\d{2}$/,  // YYYY-MM-DD
+      /^\d{2}\/\d{2}\/\d{4}$/, // DD/MM/YYYY or MM/DD/YYYY
+      /^\d{2}-\d{2}-\d{4}$/,   // DD-MM-YYYY
+      /^\d{4}\/\d{2}\/\d{2}$/  // YYYY/MM/DD
+    ];
+
+    if (datePatterns.some(pattern => pattern.test(str))) {
+      const date = new Date(str);
+      return !isNaN(date.getTime());
+    }
+
+    return false;
+  }
+
+  isNumber(value) {
+    if (value === null || value === undefined || value === '') return false;
+    const str = String(value).trim();
+
+    // Remove common number formatting
+    const cleaned = str.replace(/[,.]/g, '').replace(/[^\d.-]/g, '');
+    return !isNaN(cleaned) && cleaned !== '';
+  }
+
+  isPercentage(value) {
+    if (!value) return false;
+    const str = String(value).trim();
+    return str.includes('%') && this.isNumber(str.replace('%', ''));
+  }
+
+  // ============================================
+  // SMART MAPPING SUGGESTION
+  // ============================================
+
+  suggestMapping(headers) {
+    const normalized = headers.map(h => h.toLowerCase().trim());
+    const suggestion = {};
+
+    // Keywords for each metric
+    const keywords = {
+      campaignName: ['campaign', 'campanha', 'nome', 'name', 'titulo', 'title'],
+      date: ['date', 'data', 'day', 'dia', 'created', 'send time', 'reporting starts'],
+      sent: ['sent', 'enviados', 'envio', 'impressions', 'impressoes', 'reach', 'alcance', 'emails sent'],
+      opens: ['opens', 'aberto', 'aberturas', 'unique opens', 'engagement', 'engajamento'],
+      clicks: ['clicks', 'clique', 'cliques', 'unique clicks', 'link clicks'],
+      conversions: ['conversions', 'conversoes', 'pedido', 'orders', 'purchases', 'compras'],
+      revenue: ['revenue', 'receita', 'valor', 'value', 'cost', 'custo', 'amount spent', 'e-commerce revenue']
+    };
+
+    // Try to match each metric
+    Object.keys(keywords).forEach(metric => {
+      const matchIndex = normalized.findIndex(header =>
+        keywords[metric].some(keyword => header.includes(keyword))
+      );
+
+      if (matchIndex !== -1) {
+        suggestion[metric] = headers[matchIndex];
+      }
+    });
+
+    return suggestion;
+  }
+
+  // ============================================
+  // AUTO-DETECT TEMPLATE
+  // ============================================
+
+  autoDetectTemplate(headers) {
+    const normalized = headers.map(h => h.toLowerCase().trim());
+
+    // Check each template
+    for (const [templateId, template] of Object.entries(this.templates)) {
+      const mappingValues = Object.values(template.mapping).map(v => v.toLowerCase());
+      const matchCount = mappingValues.filter(value =>
+        normalized.some(header => header.includes(value) || value.includes(header))
+      ).length;
+
+      // If more than 60% of columns match, consider it a match
+      if (matchCount / mappingValues.length > 0.6) {
+        console.log(`Auto-detected template: ${template.name} (${matchCount}/${mappingValues.length} columns matched)`);
+        return templateId;
+      }
+    }
+
+    return null;
+  }
+
+  // ============================================
+  // MAPPING VALIDATION
+  // ============================================
+
+  validateMapping(mapping, columnTypes) {
+    const errors = [];
+    const required = ['campaignName', 'date', 'sent'];
+
+    // Check required fields
+    required.forEach(field => {
+      if (!mapping[field]) {
+        errors.push(`Campo obrigatório não mapeado: ${field}`);
+      }
+    });
+
+    // Check types
+    if (mapping.date && columnTypes[mapping.date] !== 'date') {
+      errors.push(`Coluna "${mapping.date}" não parece ser uma data`);
+    }
+
+    const numericFields = ['sent', 'opens', 'clicks', 'conversions', 'revenue'];
+    numericFields.forEach(field => {
+      if (mapping[field] && columnTypes[mapping[field]] !== 'number' && columnTypes[mapping[field]] !== 'percentage') {
+        errors.push(`Coluna "${mapping[field]}" não parece ser numérica`);
+      }
+    });
+
+    return {
+      valid: errors.length === 0,
+      errors
+    };
+  }
+
+  // ============================================
+  // EXPORT/IMPORT
+  // ============================================
+
+  exportTemplate(templateId) {
+    const template = this.templates[templateId];
+    if (!template) return null;
+
+    const exportData = {
+      id: templateId,
+      ...template,
+      exportedAt: new Date().toISOString()
+    };
+
+    return JSON.stringify(exportData, null, 2);
+  }
+
+  importTemplate(jsonString) {
+    try {
+      const data = JSON.parse(jsonString);
+      const templateId = data.id || `custom_${Date.now()}`;
+
+      delete data.id;
+      delete data.exportedAt;
+
+      this.saveTemplate(templateId, data);
+      return { success: true, templateId };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
+}
+
 class MarketingDashboard {
   constructor() {
     this.campaigns = [];
     this.charts = {};
+    this.csvMapper = new CSVMapper(); // CSV Mapper instance
     this.currentFilters = {
       crm: 'all',
       dateRange: 'all',
@@ -158,8 +525,16 @@ class MarketingDashboard {
     if (files.length === 0) return;
 
     for (const file of files) {
-      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+      const fileName = file.name.toLowerCase();
+
+      if (file.type === 'text/csv' || fileName.endsWith('.csv')) {
         await this.parseCSV(file);
+      } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') ||
+        file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        file.type === 'application/vnd.ms-excel') {
+        await this.parseXLSX(file);
+      } else {
+        alert(`Formato de arquivo não suportado: ${file.name}\nUse arquivos .csv, .xlsx ou .xls`);
       }
     }
 
@@ -419,6 +794,7 @@ class MarketingDashboard {
     document.getElementById('monthly-section').classList.add('hidden');
     document.getElementById('filters-section').classList.add('hidden');
     document.getElementById('charts-section').classList.add('hidden');
+    document.getElementById('revenue-section').classList.add('hidden');
 
     // Show upload section
     document.getElementById('upload-section').classList.remove('hidden');
@@ -1403,3 +1779,5 @@ ${tips.map(t => `- ${t.replace(/<[^>]*>/g, '')}`).join('\n')}
 document.addEventListener('DOMContentLoaded', () => {
   window.dashboard = new MarketingDashboard();
 });
+
+

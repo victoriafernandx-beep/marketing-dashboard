@@ -16,6 +16,9 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
   <!-- html2canvas for screenshots -->
+  <!-- SheetJS for XLSX support -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
   <!-- Icons (Material Symbols) -->
@@ -67,9 +70,9 @@
         <p class="upload-subtitle">ou clique para selecionar arquivos</p>
         <button class="btn btn-primary" type="button">
           <span class="material-symbols-outlined">upload_file</span>
-          Selecionar Arquivos CSV
+          Selecionar Arquivos (CSV ou XLSX)
         </button>
-        <input type="file" id="file-input" class="file-input" accept=".csv" multiple>
+        <input type="file" id="file-input" class="file-input" accept=".csv,.xlsx,.xls" multiple>
       </div>
     </section>
 
@@ -290,6 +293,82 @@
     </section>
 
   </main>
+
+  <!-- CSV Mapping Modal -->
+  <div class="modal hidden" id="csv-mapping-modal">
+    <div class="modal-overlay" id="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">⚙️ Configurar Mapeamento de Colunas</h2>
+        <button class="btn-icon modal-close" id="modal-close-btn">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Template Selection -->
+        <div class="mapping-section">
+          <div class="mapping-section-header">
+            <h3>📋 Template</h3>
+            <p class="mapping-section-subtitle">Selecione um template pré-definido ou crie um novo</p>
+          </div>
+          <div class="template-selector">
+            <select id="template-select" class="filter-select">
+              <option value="">Criar novo mapeamento</option>
+              <option value="edrone">Edrone</option>
+              <option value="rd_station">RD Station</option>
+              <option value="google_ads">Google Ads</option>
+              <option value="facebook_ads">Facebook Ads</option>
+              <option value="mailchimp">Mailchimp</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Column Mapping -->
+        <div class="mapping-section">
+          <div class="mapping-section-header">
+            <h3>🔗 Mapeamento de Colunas</h3>
+            <p class="mapping-section-subtitle">Mapeie as colunas do seu CSV para as métricas do dashboard</p>
+          </div>
+
+          <div class="mapping-grid" id="mapping-grid">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Data Preview -->
+        <div class="mapping-section">
+          <div class="mapping-section-header">
+            <h3>👁️ Preview dos Dados</h3>
+            <p class="mapping-section-subtitle">Primeiras 3 linhas do arquivo</p>
+          </div>
+          <div class="data-preview" id="data-preview">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Validation Messages -->
+        <div class="validation-messages hidden" id="validation-messages">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-mapping-btn">
+          <span class="material-symbols-outlined">close</span>
+          Cancelar
+        </button>
+        <button class="btn btn-secondary" id="save-template-btn">
+          <span class="material-symbols-outlined">save</span>
+          Salvar Template
+        </button>
+        <button class="btn btn-primary" id="apply-mapping-btn">
+          <span class="material-symbols-outlined">check</span>
+          Aplicar Mapeamento
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- Footer -->
   <footer class="footer">
