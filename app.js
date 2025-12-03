@@ -438,6 +438,7 @@ class MarketingDashboard {
 
     // Clear data
     document.getElementById('clear-data-btn').addEventListener('click', () => {
+      console.log('Clear data button clicked');
       if (confirm('Tem certeza que deseja limpar todos os dados?')) {
         this.clearAllData();
       }
@@ -784,26 +785,38 @@ class MarketingDashboard {
   }
 
   clearAllData() {
+    console.log('Clearing all data...');
     this.campaigns = [];
     localStorage.removeItem('marketing_campaigns');
 
     // Hide dashboard sections
-    document.getElementById('metrics-section').classList.add('hidden');
-    document.getElementById('executive-summary-section').classList.add('hidden');
-    document.getElementById('insights-section').classList.add('hidden');
-    document.getElementById('monthly-section').classList.add('hidden');
-    document.getElementById('filters-section').classList.add('hidden');
-    document.getElementById('charts-section').classList.add('hidden');
-    document.getElementById('revenue-section').classList.add('hidden');
+    const sections = [
+      'metrics-section', 'executive-summary-section', 'insights-section',
+      'monthly-section', 'filters-section', 'charts-section', 'revenue-section'
+    ];
+
+    sections.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
 
     // Show upload section
-    document.getElementById('upload-section').classList.remove('hidden');
+    const uploadSection = document.getElementById('upload-section');
+    if (uploadSection) {
+      uploadSection.classList.remove('hidden');
+      console.log('Upload section shown');
+    } else {
+      console.error('Upload section not found!');
+    }
 
     // Destroy charts
     Object.values(this.charts).forEach(chart => {
       if (chart) chart.destroy();
     });
     this.charts = {};
+
+    // Optional: Reload page to ensure clean state if needed
+    // location.reload();
   }
 
   // ============================================
