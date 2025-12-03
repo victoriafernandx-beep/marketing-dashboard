@@ -65,21 +65,19 @@
     <!-- Upload Section -->
     <section class="upload-section" id="upload-section">
       <div class="upload-area" id="upload-area">
-        <div class="upload-icon">📁</div>
-        <h2 class="upload-title">Arraste seus arquivos CSV aqui</h2>
-        <p class="upload-subtitle">ou clique para selecionar arquivos</p>
-        <button class="btn btn-primary" type="button">
-          <span class="material-symbols-outlined">upload_file</span>
-          Selecionar Arquivos (CSV ou XLSX)
-        </button>
-      \u003c/div\u003e\r\n      \u003cinput type="file" id="file-input" class="file-input" accept=".csv,.xlsx,.xls" multiple style="display: none;"\u003e
-    </section>
-
-    <!-- Filters Section -->
-    <section class="filters-section hidden" id="filters-section">
-      <div class="filters-container">
-        <div class="filter-group">
-          <label for="date-range-filter">Período</label>
+      <!-- Upload Section -->
+<section class="upload-section" id="upload-section">
+  <div class="upload-area" id="upload-area">
+    <div class="upload-icon">📁</div>
+    <h2 class="upload-title">Arraste seus arquivos CSV aqui</h2>
+    <p class="upload-subtitle">ou clique para selecionar arquivos</p>
+    <button class="btn btn-primary" type="button" id="select-files-btn">
+      <span class="material-symbols-outlined">upload_file</span>
+      Selecionar Arquivos (CSV ou XLSX)
+    </button>
+  </div>
+  <input type="file" id="file-input" class="file-input" accept=".csv,.xlsx,.xls" multiple>
+</section>
           <select id="date-range-filter" class="filter-select">
             <option value="all">Todo o período</option>
             <option value="30">Últimos 30 dias</option>
