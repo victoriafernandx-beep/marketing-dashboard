@@ -215,20 +215,37 @@ class CSVMapper {
     if (!value) return false;
     const str = String(value).trim();
 
-    // Common date patterns
-    const datePatterns = [
-      /^\d{4}-\d{2}-\d{2}$/,  // YYYY-MM-DD
-      /^\d{2}\/\d{2}\/\d{4}$/, // DD/MM/YYYY or MM/DD/YYYY
-      /^\d{2}-\d{2}-\d{4}$/,   // DD-MM-YYYY
-      /^\d{4}\/\d{2}\/\d{2}$/  // YYYY/MM/DD
-    ];
-
-    if (datePatterns.some(pattern => pattern.test(str))) {
+    // 1. Try ISO format (YYYY-MM-DD)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
       const date = new Date(str);
       return !isNaN(date.getTime());
     }
 
-    return false;
+    // 2. Try BR/EU format (DD/MM/YYYY)
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+      const parts = str.split('/');
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1; // Months are 0-indexed
+      const year = parseInt(parts[2], 10);
+
+      const date = new Date(year, month, day);
+      return date.getFullYear() === year && date.getMonth() === month && date.getDate() === day;
+    }
+
+    // 3. Try BR/EU format with dashes (DD-MM-YYYY)
+    if (/^\d{2}-\d{2}-\d{4}$/.test(str)) {
+      const parts = str.split('-');
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const year = parseInt(parts[2], 10);
+
+      const date = new Date(year, month, day);
+      return date.getFullYear() === year && date.getMonth() === month && date.getDate() === day;
+    }
+
+    // 4. Fallback to standard Date constructor for other formats
+    const date = new Date(str);
+    return !isNaN(date.getTime()) && str.length > 5; // Ensure it's not just a short number
   }
 
   isNumber(value) {
