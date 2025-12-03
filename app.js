@@ -713,7 +713,7 @@ class MarketingDashboard {
   // CSV MAPPING MODAL LOGIC
   // ============================================
 
-  async showMappingModal(file, headers, sampleData) {
+  async showMappingModal(file, headers, sampleData, allowCancel = false) {
     return new Promise((resolve) => {
       const modal = document.getElementById('csv-mapping-modal');
       const overlay = document.getElementById('modal-overlay');
@@ -722,6 +722,13 @@ class MarketingDashboard {
       const applyBtn = document.getElementById('apply-mapping-btn');
       const saveTemplateBtn = document.getElementById('save-template-btn');
       const templateSelect = document.getElementById('template-select');
+
+      // Update Cancel button text/behavior based on context
+      if (allowCancel) {
+        cancelBtn.innerHTML = '<span class="material-symbols-outlined">skip_next</span> Pular Mapeamento (Apenas Análise)';
+      } else {
+        cancelBtn.innerHTML = '<span class="material-symbols-outlined">close</span> Cancelar';
+      }
 
       // Store current file data
       this.currentFile = { file, headers, sampleData };
@@ -920,556 +927,499 @@ class MarketingDashboard {
   async parseCSV(file) {
     console.log('Starting parseCSV for:', file.name);
     return new Promise((resolve) => {
-      try {
-        Papa.parse(file, {
-          header: true,
-          skipEmptyLines: true,
-          complete: async (results) => {
-            console.log('Papa Parse complete. Errors:', results.errors.length, 'Rows:', results.data.length);
-            if (results.errors.length > 0) {
-              console.warn('CSV parsing errors:', results.errors);
-            }
-
-            const headers = results.meta.fields;
-            const data = results.data;
-
-            if (!headers || headers.length === 0) {
-              alert('Erro: O arquivo CSV não possui cabeçalhos identificáveis.');
-              resolve();
-              return;
-            }
-
-            try {
-              // Check if we can auto-detect a template
-              console.log('Auto-detecting template...');
-              const detectedTemplateId = this.csvMapper.autoDetectTemplate(headers);
-              let mapping = null;
-
-              if (detectedTemplateId) {
-                console.log(`Using auto-detected template: ${detectedTemplateId}`);
-                mapping = this.csvMapper.templates[detectedTemplateId].mapping;
-              } else {
-                // Show mapping modal
-                console.log('No template detected, showing modal...');
-                mapping = await this.showMappingModal(file, headers, data);
-                console.log('Modal closed. Mapping:', mapping);
-              }
-
-              if (mapping) {
-                const campaigns = this.processParsedData(data, file.name, headers, mapping);
-
-                if (campaigns.length === 0) {
-                  alert('Aviso: Nenhuma campanha foi identificada no arquivo. Verifique se o CSV possui cabeçalhos e dados válidos.');
-                } else {
-                  alert(`${campaigns.length} campanhas importadas com sucesso!`);
-                  this.campaigns.push(...campaigns);
-                }
-              }
-            } catch (err) {
-              console.error('Error processing CSV data:', err);
-              alert('Erro ao processar dados do CSV: ' + err.message);
-            }
-
-            resolve();
-          },
-          error: (error) => {
-            console.error('Error parsing CSV:', error);
-            alert('Erro ao ler o arquivo CSV: ' + error.message);
-            resolve();
-          }
-        });
-      } catch (e) {
-        console.error('Error initiating Papa Parse:', e);
-        alert('Erro ao iniciar leitura do CSV: ' + e.message);
-        resolve();
-      }
     });
+  } catch(e) {
+    console.error('Error initiating Papa Parse:', e);
+    alert('Erro ao iniciar leitura do CSV: ' + e.message);
+    resolve();
+  }
+});
   }
 
-  processParsedData(data, filename, headers, mapping = null) {
-    const campaigns = [];
+processParsedData(data, filename, headers, mapping = null) {
+  const campaigns = [];
 
-    // Save raw data for dynamic analysis
-    this.rawData = data;
+  // Save raw data for dynamic analysis
+  this.rawData = data;
 
-    // Normalize headers to lowercase for detection
-    const lowerHeaders = headers.map(h => h.toLowerCase());
-    const crmName = this.detectCRM(filename, lowerHeaders);
+  // Normalize headers to lowercase for detection
+  const lowerHeaders = headers.map(h => h.toLowerCase());
+  const crmName = this.detectCRM(filename, lowerHeaders);
 
-    console.log('Processing data from:', filename);
-    console.log('Detected CRM:', crmName);
-    console.log('Using mapping:', mapping);
+  console.log('Processing data from:', filename);
+  console.log('Detected CRM:', crmName);
+  console.log('Using mapping:', mapping);
 
-    data.forEach((row, index) => {
-      // Create a normalized row object where keys are lowercase for easier matching
-      // If mapping is provided, we use the raw keys from the mapping
-      const normalizedRow = {};
-      Object.keys(row).forEach(key => {
-        normalizedRow[key.toLowerCase()] = row[key];
-      });
-
-      const campaign = this.mapCSVRow(row, normalizedRow, crmName, mapping);
-
-      if (index === 0) {
-        console.log('Mapped campaign:', campaign);
-      }
-
-      if (campaign.name) {
-        campaigns.push(campaign);
-      } else {
-        // console.warn('Campaign skipped (no name):', row);
-      }
+  data.forEach((row, index) => {
+    // Create a normalized row object where keys are lowercase for easier matching
+    // If mapping is provided, we use the raw keys from the mapping
+    const normalizedRow = {};
+    Object.keys(row).forEach(key => {
+      normalizedRow[key.toLowerCase()] = row[key];
     });
 
-    console.log('Total campaigns processed:', campaigns.length);
-    return campaigns;
-  }
+    const campaign = this.mapCSVRow(row, normalizedRow, crmName, mapping);
 
-  // ============================================
-  // DYNAMIC ANALYSIS RENDERING
-  // ============================================
+    if (index === 0) {
+      console.log('Mapped campaign:', campaign);
+    }
 
-  renderDynamicAnalysis() {
-    if (!this.rawData || this.rawData.length === 0) return;
+    if (campaign.name) {
+      campaigns.push(campaign);
+    } else {
+      // console.warn('Campaign skipped (no name):', row);
+    }
+  });
 
-    const section = document.getElementById('dynamic-analysis-section');
-    const kpiGrid = document.getElementById('dynamic-kpi-grid');
-    const chartsGrid = document.getElementById('dynamic-charts-grid');
-    const insightsContainer = document.getElementById('dynamic-text-insights');
+  console.log('Total campaigns processed:', campaigns.length);
+  return campaigns;
+}
 
-    // Run analysis
-    const results = this.dataAnalyzer.analyze(this.rawData);
-    if (!results) return;
+// ============================================
+// DYNAMIC ANALYSIS RENDERING
+// ============================================
 
-    section.classList.remove('hidden');
-    kpiGrid.innerHTML = '';
-    chartsGrid.innerHTML = '';
-    insightsContainer.innerHTML = '';
+renderDynamicAnalysis() {
+  if (!this.rawData || this.rawData.length === 0) return;
 
-    console.log('Dynamic Analysis Results:', results);
+  const section = document.getElementById('dynamic-analysis-section');
+  const kpiGrid = document.getElementById('dynamic-kpi-grid');
+  const chartsGrid = document.getElementById('dynamic-charts-grid');
+  const insightsContainer = document.getElementById('dynamic-text-insights');
 
-    // 1. Render KPIs (Numeric Sums)
-    Object.entries(results.columnTypes).forEach(([header, type]) => {
-      if (type === 'number' && results.stats[header]) {
-        const stat = results.stats[header];
-        // Only show if sum > 0 to avoid IDs or useless numbers
-        if (stat.sum > 0) {
-          const card = document.createElement('div');
-          card.className = 'metric-card';
-          card.innerHTML = `
+  // Run analysis
+  const results = this.dataAnalyzer.analyze(this.rawData);
+  if (!results) return;
+
+  section.classList.remove('hidden');
+  kpiGrid.innerHTML = '';
+  chartsGrid.innerHTML = '';
+  insightsContainer.innerHTML = '';
+
+  console.log('Dynamic Analysis Results:', results);
+
+  // 1. Render KPIs (Numeric Sums)
+  Object.entries(results.columnTypes).forEach(([header, type]) => {
+    if (type === 'number' && results.stats[header]) {
+      const stat = results.stats[header];
+      // Only show if sum > 0 to avoid IDs or useless numbers
+      if (stat.sum > 0) {
+        const card = document.createElement('div');
+        card.className = 'metric-card';
+        card.innerHTML = `
             <h3>Total ${header}</h3>
             <p class="metric-value">${this.formatNumber(stat.sum)}</p>
             <p class="metric-trend">Média: ${this.formatNumber(stat.avg)}</p>
           `;
-          kpiGrid.appendChild(card);
-        }
+        kpiGrid.appendChild(card);
       }
-    });
-
-    // 2. Render Charts
-    // Strategy: 
-    // - Find a Date column for X-axis
-    // - Find Categorical columns for grouping
-    // - Plot Numeric columns against them
-
-    const dateCol = Object.keys(results.columnTypes).find(key => results.columnTypes[key] === 'date');
-    const numericCols = Object.keys(results.columnTypes).filter(key => results.columnTypes[key] === 'number');
-    const categoryCols = Object.keys(results.columnTypes).filter(key => results.columnTypes[key] === 'category');
-
-    // Chart 1: Time Series (if Date exists)
-    if (dateCol && numericCols.length > 0) {
-      // Pick top 3 numeric metrics to plot
-      const metrics = numericCols.slice(0, 3);
-      this.renderDynamicTimeChart(chartsGrid, dateCol, metrics);
     }
+  });
 
-    // Chart 2: Category Distribution (if Category exists)
-    if (categoryCols.length > 0 && numericCols.length > 0) {
-      // Pick best category (most unique values but < 20)
-      const bestCat = categoryCols.find(c => results.stats[c].counts.length > 1 && results.stats[c].counts.length <= 15) || categoryCols[0];
-      // Pick first metric
-      const metric = numericCols[0];
+  // 2. Render Charts
+  // Strategy: 
+  // - Find a Date column for X-axis
+  // - Find Categorical columns for grouping
+  // - Plot Numeric columns against them
 
-      this.renderDynamicCategoryChart(chartsGrid, bestCat, metric, results.stats[bestCat]);
-    }
+  const dateCol = Object.keys(results.columnTypes).find(key => results.columnTypes[key] === 'date');
+  const numericCols = Object.keys(results.columnTypes).filter(key => results.columnTypes[key] === 'number');
+  const categoryCols = Object.keys(results.columnTypes).filter(key => results.columnTypes[key] === 'category');
 
-    // 3. Render Text Insights
-    this.renderDynamicInsights(insightsContainer, results);
+  // Chart 1: Time Series (if Date exists)
+  if (dateCol && numericCols.length > 0) {
+    // Pick top 3 numeric metrics to plot
+    const metrics = numericCols.slice(0, 3);
+    this.renderDynamicTimeChart(chartsGrid, dateCol, metrics);
   }
 
-  renderDynamicTimeChart(container, dateCol, metrics) {
-    const canvas = document.createElement('canvas');
-    const wrapper = document.createElement('div');
-    wrapper.className = 'chart-container';
-    wrapper.appendChild(canvas);
-    container.appendChild(wrapper);
+  // Chart 2: Category Distribution (if Category exists)
+  if (categoryCols.length > 0 && numericCols.length > 0) {
+    // Pick best category (most unique values but < 20)
+    const bestCat = categoryCols.find(c => results.stats[c].counts.length > 1 && results.stats[c].counts.length <= 15) || categoryCols[0];
+    // Pick first metric
+    const metric = numericCols[0];
 
-    // Aggregate data by date
-    const timeData = {};
-    this.rawData.forEach(row => {
-      const dateVal = row[dateCol];
-      if (!dateVal) return;
-
-      // Simple date normalization
-      let key = String(dateVal).split('T')[0]; // Try to get YYYY-MM-DD
-
-      if (!timeData[key]) timeData[key] = {};
-
-      metrics.forEach(metric => {
-        const val = this.dataAnalyzer.parseNumber(row[metric]);
-        timeData[key][metric] = (timeData[key][metric] || 0) + val;
-      });
-    });
-
-    const labels = Object.keys(timeData).sort();
-    const datasets = metrics.map((metric, i) => {
-      const colors = ['#6366f1', '#10b981', '#f59e0b'];
-      return {
-        label: metric,
-        data: labels.map(date => timeData[date][metric]),
-        borderColor: colors[i % colors.length],
-        tension: 0.4,
-        fill: false
-      };
-    });
-
-    new Chart(canvas, {
-      type: 'line',
-      data: { labels, datasets },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          title: { display: true, text: `Evolução Temporal por ${dateCol}` }
-        }
-      }
-    });
+    this.renderDynamicCategoryChart(chartsGrid, bestCat, metric, results.stats[bestCat]);
   }
 
-  renderDynamicCategoryChart(container, categoryCol, metricCol, stats) {
-    const canvas = document.createElement('canvas');
-    const wrapper = document.createElement('div');
-    wrapper.className = 'chart-container';
-    wrapper.appendChild(canvas);
-    container.appendChild(wrapper);
+  // 3. Render Text Insights
+  this.renderDynamicInsights(insightsContainer, results);
+}
 
-    const topCategories = stats.counts.slice(0, 10); // Top 10
-    const labels = topCategories.map(c => c[0]);
+renderDynamicTimeChart(container, dateCol, metrics) {
+  const canvas = document.createElement('canvas');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'chart-container';
+  wrapper.appendChild(canvas);
+  container.appendChild(wrapper);
 
-    // Calculate metric sum per category
-    const dataValues = labels.map(cat => {
-      return this.rawData
-        .filter(row => String(row[categoryCol]).trim() === cat)
-        .reduce((sum, row) => sum + this.dataAnalyzer.parseNumber(row[metricCol]), 0);
+  // Aggregate data by date
+  const timeData = {};
+  this.rawData.forEach(row => {
+    const dateVal = row[dateCol];
+    if (!dateVal) return;
+
+    // Simple date normalization
+    let key = String(dateVal).split('T')[0]; // Try to get YYYY-MM-DD
+
+    if (!timeData[key]) timeData[key] = {};
+
+    metrics.forEach(metric => {
+      const val = this.dataAnalyzer.parseNumber(row[metric]);
+      timeData[key][metric] = (timeData[key][metric] || 0) + val;
     });
+  });
 
-    new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          label: `Total ${metricCol} por ${categoryCol}`,
-          data: dataValues,
-          backgroundColor: '#8b5cf6'
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          title: { display: true, text: `Top 10 ${categoryCol} por ${metricCol}` }
-        }
-      }
-    });
-  }
-
-  renderDynamicInsights(container, results) {
-    const insights = [];
-
-    // Insight 1: Record Count
-    insights.push(`📊 <strong>Volume de Dados:</strong> Foram analisadas <strong>${results.rowCount}</strong> linhas.`);
-
-    // Insight 2: Top Categories
-    Object.entries(results.columnTypes).forEach(([header, type]) => {
-      if (type === 'category') {
-        const top = results.stats[header].top[0];
-        if (top) {
-          insights.push(`🏆 <strong>${header}:</strong> O valor mais comum é <strong>"${top[0]}"</strong> (${top[1]} ocorrências).`);
-        }
-      }
-    });
-
-    // Insight 3: Max Values
-    Object.entries(results.columnTypes).forEach(([header, type]) => {
-      if (type === 'number' && results.stats[header]) {
-        insights.push(`💰 <strong>${header}:</strong> O valor total é <strong>${this.formatNumber(results.stats[header].sum)}</strong>.`);
-      }
-    });
-
-    container.innerHTML = insights.map(i => `<div class="insight-item">${i}</div>`).join('');
-  }
-
-  // Modified to accept object instead of array
-  mapCSVRow(rawRow, normalizedRow, crm, mapping) {
-    let campaignName, engagementType, date, sent, opens, clicks, conversions, revenue;
-
-    if (mapping) {
-      // Use dynamic mapping
-      campaignName = rawRow[mapping.campaignName];
-      engagementType = mapping.engagementType ? rawRow[mapping.engagementType] : 'email';
-      date = rawRow[mapping.date];
-      sent = this.parseNumber(rawRow[mapping.sent]);
-      opens = mapping.opens ? this.parseNumber(rawRow[mapping.opens]) : 0;
-      clicks = mapping.clicks ? this.parseNumber(rawRow[mapping.clicks]) : 0;
-      conversions = mapping.conversions ? this.parseNumber(rawRow[mapping.conversions]) : 0;
-      revenue = mapping.revenue ? this.parseNumber(rawRow[mapping.revenue]) : 0;
-    } else {
-      // Legacy fallback (should rarely be reached now)
-      campaignName = this.findValue(normalizedRow, ['titulo', 'campanha', 'nome', 'name', 'campaign', 'título', 'title']);
-      engagementType = this.findValue(normalizedRow, ['campanha', 'jornada', 'engagement']);
-      date = this.findValue(normalizedRow, ['data', 'date', 'data_envio', 'send_date', 'created']);
-      sent = this.parseNumber(this.findValue(normalizedRow, ['envio', 'emails_enviados', 'enviados', 'sent', 'emails_sent', 'total_sent']));
-      opens = this.parseNumber(this.findValue(normalizedRow, ['aberto', 'aberturas', 'opens', 'unique_opens', 'abertos']));
-      clicks = this.parseNumber(this.findValue(normalizedRow, ['clique', 'cliques', 'clicks', 'unique_clicks']));
-      conversions = this.parseNumber(this.findValue(normalizedRow, ['pedido', 'conversões', 'conversions', 'conversoes', 'converted']));
-      revenue = this.parseNumber(this.findValue(normalizedRow, ['receita', 'revenue', 'valor', 'value']));
-    }
-
-    // Map common column names to standard format
-    const campaign = {
-      id: Date.now() + Math.random(),
-      name: campaignName,
-      engagementType: engagementType,
-      crm: crm,
-      date: date,
-      sent: sent,
-      delivered: sent, // Assuming delivered = sent if not specified
-      opens: opens,
-      totalOpens: opens,
-      clicks: clicks,
-      totalClicks: clicks,
-      conversions: conversions,
-      revenue: revenue,
-      status: 'completed',
-      type: this.detectCampaignTypeFromEngagement(engagementType, campaignName)
+  const labels = Object.keys(timeData).sort();
+  const datasets = metrics.map((metric, i) => {
+    const colors = ['#6366f1', '#10b981', '#f59e0b'];
+    return {
+      label: metric,
+      data: labels.map(date => timeData[date][metric]),
+      borderColor: colors[i % colors.length],
+      tension: 0.4,
+      fill: false
     };
+  });
 
-    // Calculate derived metrics
-    const delivered = campaign.delivered || campaign.sent;
-    campaign.openRate = delivered > 0 ? (campaign.opens / delivered) * 100 : 0;
-    campaign.clickRate = delivered > 0 ? (campaign.clicks / delivered) * 100 : 0;
-    campaign.conversionRate = campaign.clicks > 0 ? (campaign.conversions / campaign.clicks) * 100 : 0;
-
-    return campaign;
-  }
-
-  detectCRM(filename, headers) {
-    const fn = filename.toLowerCase();
-
-    if (fn.includes('edrone')) return 'Edrone';
-    if (fn.includes('sendinblue') || fn.includes('sendinpulse')) return 'Sendinpulse';
-    if (fn.includes('rd') || fn.includes('rdstation')) return 'RD Station';
-    if (fn.includes('mailchimp')) return 'Mailchimp';
-    if (fn.includes('hubspot')) return 'HubSpot';
-
-    // Try to detect from headers
-    if (headers.some(h => h.includes('edrone'))) return 'Edrone';
-    if (headers.some(h => h.includes('sendinblue'))) return 'Sendinpulse';
-    if (headers.some(h => h.includes('rd'))) return 'RD Station';
-
-    return 'Outro';
-  }
-
-  findValue(row, possibleKeys) {
-    // First try exact matches
-    for (const key of possibleKeys) {
-      if (row[key] !== undefined) {
-        return row[key];
+  new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        title: { display: true, text: `Evolução Temporal por ${dateCol}` }
       }
     }
+  });
+}
 
-    // Then try partial matches (contains)
-    for (const key of possibleKeys) {
-      for (const rowKey in row) {
-        if (rowKey.includes(key)) {
-          return row[rowKey];
-        }
+renderDynamicCategoryChart(container, categoryCol, metricCol, stats) {
+  const canvas = document.createElement('canvas');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'chart-container';
+  wrapper.appendChild(canvas);
+  container.appendChild(wrapper);
+
+  const topCategories = stats.counts.slice(0, 10); // Top 10
+  const labels = topCategories.map(c => c[0]);
+
+  // Calculate metric sum per category
+  const dataValues = labels.map(cat => {
+    return this.rawData
+      .filter(row => String(row[categoryCol]).trim() === cat)
+      .reduce((sum, row) => sum + this.dataAnalyzer.parseNumber(row[metricCol]), 0);
+  });
+
+  new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: `Total ${metricCol} por ${categoryCol}`,
+        data: dataValues,
+        backgroundColor: '#8b5cf6'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        title: { display: true, text: `Top 10 ${categoryCol} por ${metricCol}` }
       }
     }
-    return '';
-  }
+  });
+}
 
-  parseNumber(value) {
-    if (!value) return 0;
-    let str = String(value).trim();
+renderDynamicInsights(container, results) {
+  const insights = [];
 
-    // Check if it has both . and ,
-    if (str.includes('.') && str.includes(',')) {
-      const lastDot = str.lastIndexOf('.');
-      const lastComma = str.lastIndexOf(',');
+  // Insight 1: Record Count
+  insights.push(`📊 <strong>Volume de Dados:</strong> Foram analisadas <strong>${results.rowCount}</strong> linhas.`);
 
-      if (lastDot > lastComma) {
-        // US Format: 1,234.56 -> Remove commas
-        str = str.replace(/,/g, '');
-      } else {
-        // BR/EU Format: 1.234,56 -> Remove dots, replace comma with dot
-        str = str.replace(/\./g, '').replace(',', '.');
+  // Insight 2: Top Categories
+  Object.entries(results.columnTypes).forEach(([header, type]) => {
+    if (type === 'category') {
+      const top = results.stats[header].top[0];
+      if (top) {
+        insights.push(`🏆 <strong>${header}:</strong> O valor mais comum é <strong>"${top[0]}"</strong> (${top[1]} ocorrências).`);
       }
-    } else if (str.includes(',')) {
-      // Only comma: 1234,56 -> Replace with dot
-      str = str.replace(',', '.');
     }
-    // If only dot, assume it's already correct (1234.56) or integer (1234)
+  });
 
-    // Remove any remaining non-numeric chars (except dot and minus)
-    str = str.replace(/[^\d.-]/g, '');
+  // Insight 3: Max Values
+  Object.entries(results.columnTypes).forEach(([header, type]) => {
+    if (type === 'number' && results.stats[header]) {
+      insights.push(`💰 <strong>${header}:</strong> O valor total é <strong>${this.formatNumber(results.stats[header].sum)}</strong>.`);
+    }
+  });
 
-    return parseFloat(str) || 0;
+  container.innerHTML = insights.map(i => `<div class="insight-item">${i}</div>`).join('');
+}
+
+// Modified to accept object instead of array
+mapCSVRow(rawRow, normalizedRow, crm, mapping) {
+  let campaignName, engagementType, date, sent, opens, clicks, conversions, revenue;
+
+  if (mapping) {
+    // Use dynamic mapping
+    campaignName = rawRow[mapping.campaignName];
+    engagementType = mapping.engagementType ? rawRow[mapping.engagementType] : 'email';
+    date = rawRow[mapping.date];
+    sent = this.parseNumber(rawRow[mapping.sent]);
+    opens = mapping.opens ? this.parseNumber(rawRow[mapping.opens]) : 0;
+    clicks = mapping.clicks ? this.parseNumber(rawRow[mapping.clicks]) : 0;
+    conversions = mapping.conversions ? this.parseNumber(rawRow[mapping.conversions]) : 0;
+    revenue = mapping.revenue ? this.parseNumber(rawRow[mapping.revenue]) : 0;
+  } else {
+    // Legacy fallback (should rarely be reached now)
+    campaignName = this.findValue(normalizedRow, ['titulo', 'campanha', 'nome', 'name', 'campaign', 'título', 'title']);
+    engagementType = this.findValue(normalizedRow, ['campanha', 'jornada', 'engagement']);
+    date = this.findValue(normalizedRow, ['data', 'date', 'data_envio', 'send_date', 'created']);
+    sent = this.parseNumber(this.findValue(normalizedRow, ['envio', 'emails_enviados', 'enviados', 'sent', 'emails_sent', 'total_sent']));
+    opens = this.parseNumber(this.findValue(normalizedRow, ['aberto', 'aberturas', 'opens', 'unique_opens', 'abertos']));
+    clicks = this.parseNumber(this.findValue(normalizedRow, ['clique', 'cliques', 'clicks', 'unique_clicks']));
+    conversions = this.parseNumber(this.findValue(normalizedRow, ['pedido', 'conversões', 'conversions', 'conversoes', 'converted']));
+    revenue = this.parseNumber(this.findValue(normalizedRow, ['receita', 'revenue', 'valor', 'value']));
   }
 
-  detectCampaignType(name) {
-    const nameLower = name.toLowerCase();
+  // Map common column names to standard format
+  const campaign = {
+    id: Date.now() + Math.random(),
+    name: campaignName,
+    engagementType: engagementType,
+    crm: crm,
+    date: date,
+    sent: sent,
+    delivered: sent, // Assuming delivered = sent if not specified
+    opens: opens,
+    totalOpens: opens,
+    clicks: clicks,
+    totalClicks: clicks,
+    conversions: conversions,
+    revenue: revenue,
+    status: 'completed',
+    type: this.detectCampaignTypeFromEngagement(engagementType, campaignName)
+  };
 
-    // Keywords for automation
-    const automationKeywords = [
-      'automação', 'automation', 'fluxo', 'flow', 'workflow',
-      'carrinho abandonado', 'abandoned cart', 'boas vindas', 'welcome',
-      'reengajamento', 're-engagement', 'aniversário', 'birthday',
-      'pós-compra', 'post-purchase', 'recuperação', 'recovery'
-    ];
+  // Calculate derived metrics
+  const delivered = campaign.delivered || campaign.sent;
+  campaign.openRate = delivered > 0 ? (campaign.opens / delivered) * 100 : 0;
+  campaign.clickRate = delivered > 0 ? (campaign.clicks / delivered) * 100 : 0;
+  campaign.conversionRate = campaign.clicks > 0 ? (campaign.conversions / campaign.clicks) * 100 : 0;
 
-    // Keywords for email marketing
-    const emailKeywords = [
-      'newsletter', 'campanha', 'campaign', 'promoção', 'promotion',
-      'lançamento', 'launch', 'black friday', 'cyber monday',
-      'desconto', 'discount', 'oferta', 'offer'
-    ];
+  return campaign;
+}
 
-    // Check for automation keywords first (more specific)
-    if (automationKeywords.some(keyword => nameLower.includes(keyword))) {
-      return 'automation';
+detectCRM(filename, headers) {
+  const fn = filename.toLowerCase();
+
+  if (fn.includes('edrone')) return 'Edrone';
+  if (fn.includes('sendinblue') || fn.includes('sendinpulse')) return 'Sendinpulse';
+  if (fn.includes('rd') || fn.includes('rdstation')) return 'RD Station';
+  if (fn.includes('mailchimp')) return 'Mailchimp';
+  if (fn.includes('hubspot')) return 'HubSpot';
+
+  // Try to detect from headers
+  if (headers.some(h => h.includes('edrone'))) return 'Edrone';
+  if (headers.some(h => h.includes('sendinblue'))) return 'Sendinpulse';
+  if (headers.some(h => h.includes('rd'))) return 'RD Station';
+
+  return 'Outro';
+}
+
+findValue(row, possibleKeys) {
+  // First try exact matches
+  for (const key of possibleKeys) {
+    if (row[key] !== undefined) {
+      return row[key];
     }
-
-    // Check for email marketing keywords
-    if (emailKeywords.some(keyword => nameLower.includes(keyword))) {
-      return 'email';
-    }
-
-    // Default to email if no clear indicator
-    return 'email';
   }
 
-  detectCampaignTypeFromEngagement(engagementType, campaignName) {
-    if (!engagementType) {
-      // Fallback to old detection method
-      return this.detectCampaignType(campaignName);
+  // Then try partial matches (contains)
+  for (const key of possibleKeys) {
+    for (const rowKey in row) {
+      if (rowKey.includes(key)) {
+        return row[rowKey];
+      }
     }
+  }
+  return '';
+}
 
-    const engagementLower = engagementType.toLowerCase();
+parseNumber(value) {
+  if (!value) return 0;
+  let str = String(value).trim();
 
-    // Special case: newsletter_subscription is automation
-    if (engagementLower.includes('newsletter_subscription')) {
-      return 'automation';
+  // Check if it has both . and ,
+  if (str.includes('.') && str.includes(',')) {
+    const lastDot = str.lastIndexOf('.');
+    const lastComma = str.lastIndexOf(',');
+
+    if (lastDot > lastComma) {
+      // US Format: 1,234.56 -> Remove commas
+      str = str.replace(/,/g, '');
+    } else {
+      // BR/EU Format: 1.234,56 -> Remove dots, replace comma with dot
+      str = str.replace(/\./g, '').replace(',', '.');
     }
+  } else if (str.includes(',')) {
+    // Only comma: 1234,56 -> Replace with dot
+    str = str.replace(',', '.');
+  }
+  // If only dot, assume it's already correct (1234.56) or integer (1234)
 
-    // newsletter (except newsletter_subscription) is email marketing
-    if (engagementLower.includes('newsletter')) {
-      return 'email';
-    }
+  // Remove any remaining non-numeric chars (except dot and minus)
+  str = str.replace(/[^\d.-]/g, '');
 
-    // SMS detection
-    if (engagementLower.includes('sms')) {
-      return 'sms';
-    }
+  return parseFloat(str) || 0;
+}
 
-    // Everything else is automation
+detectCampaignType(name) {
+  const nameLower = name.toLowerCase();
+
+  // Keywords for automation
+  const automationKeywords = [
+    'automação', 'automation', 'fluxo', 'flow', 'workflow',
+    'carrinho abandonado', 'abandoned cart', 'boas vindas', 'welcome',
+    'reengajamento', 're-engagement', 'aniversário', 'birthday',
+    'pós-compra', 'post-purchase', 'recuperação', 'recovery'
+  ];
+
+  // Keywords for email marketing
+  const emailKeywords = [
+    'newsletter', 'campanha', 'campaign', 'promoção', 'promotion',
+    'lançamento', 'launch', 'black friday', 'cyber monday',
+    'desconto', 'discount', 'oferta', 'offer'
+  ];
+
+  // Check for automation keywords first (more specific)
+  if (automationKeywords.some(keyword => nameLower.includes(keyword))) {
     return 'automation';
   }
 
-  // ============================================
-  // DATA MANAGEMENT
-  // ============================================
-  saveDataToStorage() {
-    localStorage.setItem('marketing_campaigns', JSON.stringify(this.campaigns));
+  // Check for email marketing keywords
+  if (emailKeywords.some(keyword => nameLower.includes(keyword))) {
+    return 'email';
   }
 
-  loadDataFromStorage() {
-    const stored = localStorage.getItem('marketing_campaigns');
-    if (stored) {
-      this.campaigns = JSON.parse(stored);
-    }
+  // Default to email if no clear indicator
+  return 'email';
+}
+
+detectCampaignTypeFromEngagement(engagementType, campaignName) {
+  if (!engagementType) {
+    // Fallback to old detection method
+    return this.detectCampaignType(campaignName);
   }
 
-  clearAllData() {
-    console.log('Clearing all data...');
-    this.campaigns = [];
-    localStorage.removeItem('marketing_campaigns');
+  const engagementLower = engagementType.toLowerCase();
 
-    // Hide dashboard sections
-    const sections = [
-      'metrics-section', 'executive-summary-section', 'insights-section',
-      'monthly-section', 'filters-section', 'charts-section', 'revenue-section'
-    ];
-
-    sections.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.classList.add('hidden');
-    });
-
-    // Show upload section
-    const uploadSection = document.getElementById('upload-section');
-    if (uploadSection) {
-      uploadSection.classList.remove('hidden');
-      console.log('Upload section shown');
-    } else {
-      console.error('Upload section not found!');
-    }
-
-    // Destroy charts
-    Object.values(this.charts).forEach(chart => {
-      if (chart) chart.destroy();
-    });
-    this.charts = {};
-
-    // Optional: Reload page to ensure clean state if needed
-    // location.reload();
+  // Special case: newsletter_subscription is automation
+  if (engagementLower.includes('newsletter_subscription')) {
+    return 'automation';
   }
 
-  // ============================================
-  // THEME
-  // ============================================
-  setupTheme() {
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', savedTheme);
-    this.updateThemeIcon(savedTheme);
+  // newsletter (except newsletter_subscription) is email marketing
+  if (engagementLower.includes('newsletter')) {
+    return 'email';
   }
 
-  toggleTheme() {
-    const currentTheme = document.documentElement.getAttribute('data-theme');
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
-    this.updateThemeIcon(newTheme);
+  // SMS detection
+  if (engagementLower.includes('sms')) {
+    return 'sms';
   }
 
-  updateThemeIcon(theme) {
-    const icon = document.querySelector('#theme-toggle .material-symbols-outlined');
-    icon.textContent = theme === 'dark' ? 'light_mode' : 'dark_mode';
+  // Everything else is automation
+  return 'automation';
+}
+
+// ============================================
+// DATA MANAGEMENT
+// ============================================
+saveDataToStorage() {
+  localStorage.setItem('marketing_campaigns', JSON.stringify(this.campaigns));
+}
+
+loadDataFromStorage() {
+  const stored = localStorage.getItem('marketing_campaigns');
+  if (stored) {
+    this.campaigns = JSON.parse(stored);
+  }
+}
+
+clearAllData() {
+  console.log('Clearing all data...');
+  this.campaigns = [];
+  localStorage.removeItem('marketing_campaigns');
+
+  // Hide dashboard sections
+  const sections = [
+    'metrics-section', 'executive-summary-section', 'insights-section',
+    'monthly-section', 'filters-section', 'charts-section', 'revenue-section'
+  ];
+
+  sections.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
+
+  // Show upload section
+  const uploadSection = document.getElementById('upload-section');
+  if (uploadSection) {
+    uploadSection.classList.remove('hidden');
+    console.log('Upload section shown');
+  } else {
+    console.error('Upload section not found!');
   }
 
-  // ============================================
-  // DISPLAY MANAGEMENT
-  // ============================================
-  showDashboard() {
-    console.log('showDashboard called');
-    console.log('Total campaigns:', this.campaigns.length);
-    console.log('Rendering table...');
-    this.renderTable();
-  } catch(error) {
-    console.error('Error rendering dashboard:', error);
-    alert('Erro ao renderizar o dashboard: ' + error.message);
-  }
+  // Destroy charts
+  Object.values(this.charts).forEach(chart => {
+    if (chart) chart.destroy();
+  });
+  this.charts = {};
+
+  // Optional: Reload page to ensure clean state if needed
+  // location.reload();
+}
+
+// ============================================
+// THEME
+// ============================================
+setupTheme() {
+  const savedTheme = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  this.updateThemeIcon(savedTheme);
+}
+
+toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+  document.documentElement.setAttribute('data-theme', newTheme);
+  localStorage.setItem('theme', newTheme);
+  this.updateThemeIcon(newTheme);
+}
+
+updateThemeIcon(theme) {
+  const icon = document.querySelector('#theme-toggle .material-symbols-outlined');
+  icon.textContent = theme === 'dark' ? 'light_mode' : 'dark_mode';
+}
+
+// ============================================
+// DISPLAY MANAGEMENT
+// ============================================
+showDashboard() {
+  console.log('showDashboard called');
+  console.log('Total campaigns:', this.campaigns.length);
+  console.log('Rendering table...');
+  this.renderTable();
+} catch (error) {
+  console.error('Error rendering dashboard:', error);
+  alert('Erro ao renderizar o dashboard: ' + error.message);
+}
 }
 
 // ============================================
