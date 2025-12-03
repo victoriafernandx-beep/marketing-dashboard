@@ -148,70 +148,57 @@
           Exportar Imagem
         </button>
       </div>
-
-      <div class="insights-grid" id="insights-grid">
-        <!-- Insights will be dynamically generated -->
+      <div class="chart-actions">
+        <select class="filter-select" id="timeline-metric">
+          <option value="opens">Aberturas</option>
+          <option value="clicks">Cliques</option>
+          <option value="conversions">Conversões</option>
+        </select>
+        <button class="btn-icon export-chart-btn" data-chart="timeline-chart" title="Exportar gráfico">
+          <span class="material-symbols-outlined">image</span>
+        </button>
       </div>
-    </section>
+      </div>
+      <div class="chart-container">
+        <canvas id="timeline-chart"></canvas>
+      </div>
+      </div>
 
-    <!-- Charts Section -->
-    <section class="charts-section hidden" id="charts-section">
-      <div class="charts-grid">
-        <!-- Timeline Chart -->
-        <div class="chart-card">
-          <div class="chart-header">
-            <h3 class="chart-title">Linha do Tempo</h3>
-            <div class="chart-actions">
-              <select class="filter-select" id="timeline-metric">
-                <option value="opens">Aberturas</option>
-                <option value="clicks">Cliques</option>
-                <option value="conversions">Conversões</option>
-              </select>
-              <button class="btn-icon export-chart-btn" data-chart="timeline-chart" title="Exportar gráfico">
-                <span class="material-symbols-outlined">image</span>
-              </button>
-            </div>
-          </div>
-          <div class="chart-container">
-            <canvas id="timeline-chart"></canvas>
+      <!-- Funnel Chart -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3 class="chart-title">Funil de Conversão</h3>
+          <div class="chart-actions">
+            <button class="btn-icon export-chart-btn" data-chart="funnel-chart" title="Exportar gráfico">
+              <span class="material-symbols-outlined">image</span>
+            </button>
           </div>
         </div>
+        <div class="chart-container">
+          <canvas id="funnel-chart"></canvas>
+        </div>
+      </div>
 
-        <!-- Funnel Chart -->
-        <div class="chart-card">
-          <div class="chart-header">
-            <h3 class="chart-title">Funil de Conversão</h3>
-            <div class="chart-actions">
-              <button class="btn-icon export-chart-btn" data-chart="funnel-chart" title="Exportar gráfico">
-                <span class="material-symbols-outlined">image</span>
-              </button>
-            </div>
-          </div>
-          <div class="chart-container">
-            <canvas id="funnel-chart"></canvas>
+      <!-- Top Campaigns Chart -->
+      <div class="chart-card full-width">
+        <div class="chart-header">
+          <h3 class="chart-title">Top Campanhas</h3>
+          <div class="chart-actions">
+            <select class="filter-select" id="top-campaigns-metric">
+              <option value="openRate">Taxa de Abertura</option>
+              <option value="clickRate">CTR</option>
+              <option value="conversions">Conversões</option>
+              <option value="revenue">Receita</option>
+            </select>
+            <button class="btn-icon export-chart-btn" data-chart="top-campaigns-chart" title="Exportar gráfico">
+              <span class="material-symbols-outlined">image</span>
+            </button>
           </div>
         </div>
-
-        <!-- Top Campaigns Chart -->
-        <div class="chart-card full-width">
-          <div class="chart-header">
-            <h3 class="chart-title">Top Campanhas</h3>
-            <div class="chart-actions">
-              <select class="filter-select" id="top-campaigns-metric">
-                <option value="openRate">Taxa de Abertura</option>
-                <option value="clickRate">CTR</option>
-                <option value="conversions">Conversões</option>
-                <option value="revenue">Receita</option>
-              </select>
-              <button class="btn-icon export-chart-btn" data-chart="top-campaigns-chart" title="Exportar gráfico">
-                <span class="material-symbols-outlined">image</span>
-              </button>
-            </div>
-          </div>
-          <div class="chart-container">
-            <canvas id="top-campaigns-chart"></canvas>
-          </div>
+        <div class="chart-container">
+          <canvas id="top-campaigns-chart"></canvas>
         </div>
+      </div>
       </div>
     </section>
 

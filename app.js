@@ -386,11 +386,149 @@ class CSVMapper {
   }
 }
 
+// ============================================
+// DATA ANALYZER CLASS (NEW)
+// Handles generic data analysis and visualization
+// ============================================
+class DataAnalyzer {
+  constructor() {
+    this.analysisResults = null;
+  }
+
+  analyze(data) {
+    if (!data || data.length === 0) return null;
+
+    const headers = Object.keys(data[0]);
+    const columnTypes = this.detectColumnTypes(data, headers);
+    const stats = this.calculateStats(data, columnTypes);
+
+    this.analysisResults = {
+      headers,
+      columnTypes,
+      stats,
+      rowCount: data.length
+    };
+
+    return this.analysisResults;
+  }
+
+  detectColumnTypes(data, headers) {
+    const types = {};
+    const sampleSize = Math.min(data.length, 100);
+    const sample = data.slice(0, sampleSize);
+
+    headers.forEach(header => {
+      const values = sample.map(row => row[header]).filter(v => v !== null && v !== undefined && v !== '');
+
+      if (values.length === 0) {
+        types[header] = 'unknown';
+        return;
+      }
+
+      // Check Date
+      const dateCount = values.filter(v => this.isDate(v)).length;
+      if (dateCount / values.length > 0.8) {
+        types[header] = 'date';
+        return;
+      }
+
+      // Check Number
+      const numberCount = values.filter(v => this.isNumber(v)).length;
+      if (numberCount / values.length > 0.8) {
+        types[header] = 'number';
+        return;
+      }
+
+      // Check Categorical (Low cardinality)
+      const uniqueValues = new Set(values).size;
+      if (uniqueValues <= 50 && uniqueValues < values.length) {
+        types[header] = 'category';
+        return;
+      }
+
+      types[header] = 'text';
+    });
+
+    return types;
+  }
+
+  calculateStats(data, columnTypes) {
+    const stats = {};
+
+    Object.entries(columnTypes).forEach(([header, type]) => {
+      const values = data.map(row => row[header]);
+
+      if (type === 'number') {
+        const numbers = values.map(v => this.parseNumber(v)).filter(n => !isNaN(n));
+        if (numbers.length > 0) {
+          const sum = numbers.reduce((a, b) => a + b, 0);
+          stats[header] = {
+            sum,
+            avg: sum / numbers.length,
+            min: Math.min(...numbers),
+            max: Math.max(...numbers)
+          };
+        }
+      } else if (type === 'category') {
+        const counts = {};
+        values.forEach(v => {
+          const val = String(v || 'N/A').trim();
+          counts[val] = (counts[val] || 0) + 1;
+        });
+        // Sort by count desc
+        const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+        stats[header] = {
+          counts: sorted,
+          top: sorted.slice(0, 5)
+        };
+      }
+    });
+
+    return stats;
+  }
+
+  // Helper methods (duplicated from CSVMapper for standalone usage or could be shared)
+  isDate(value) {
+    if (!value) return false;
+    const str = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return true;
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) return true;
+    if (/^\d{2}-\d{2}-\d{4}$/.test(str)) return true;
+    const date = new Date(str);
+    return !isNaN(date.getTime()) && str.length > 5;
+  }
+
+  isNumber(value) {
+    if (value === null || value === undefined || value === '') return false;
+    const str = String(value).trim();
+    const cleaned = str.replace(/[,.]/g, '').replace(/[^\d.-]/g, '');
+    return !isNaN(cleaned) && cleaned !== '';
+  }
+
+  parseNumber(value) {
+    if (typeof value === 'number') return value;
+    if (!value) return 0;
+    let str = String(value).trim();
+    if (str.includes(',') && str.includes('.')) {
+      if (str.indexOf(',') > str.indexOf('.')) {
+        str = str.replace(/\./g, '').replace(',', '.');
+      } else {
+        str = str.replace(/,/g, '');
+      }
+    } else if (str.includes(',')) {
+      str = str.replace(',', '.');
+    }
+    return parseFloat(str.replace(/[^\d.-]/g, '')) || 0;
+  }
+}
+
 class MarketingDashboard {
   constructor() {
     this.campaigns = [];
+    this.rawData = []; // Store raw data for dynamic analysis
     this.charts = {};
-    this.csvMapper = new CSVMapper(); // CSV Mapper instance
+    this.csvMapper = new CSVMapper();
+    this.dataAnalyzer = new DataAnalyzer(); // New Analyzer
     this.currentFilters = {
       crm: 'all',
       dateRange: 'all',
@@ -851,6 +989,9 @@ class MarketingDashboard {
   processParsedData(data, filename, headers, mapping = null) {
     const campaigns = [];
 
+    // Save raw data for dynamic analysis
+    this.rawData = data;
+
     // Normalize headers to lowercase for detection
     const lowerHeaders = headers.map(h => h.toLowerCase());
     const crmName = this.detectCRM(filename, lowerHeaders);
@@ -876,12 +1017,196 @@ class MarketingDashboard {
       if (campaign.name) {
         campaigns.push(campaign);
       } else {
-        console.warn('Campaign skipped (no name):', row);
+        // console.warn('Campaign skipped (no name):', row);
       }
     });
 
     console.log('Total campaigns processed:', campaigns.length);
     return campaigns;
+  }
+
+  // ============================================
+  // DYNAMIC ANALYSIS RENDERING
+  // ============================================
+
+  renderDynamicAnalysis() {
+    if (!this.rawData || this.rawData.length === 0) return;
+
+    const section = document.getElementById('dynamic-analysis-section');
+    const kpiGrid = document.getElementById('dynamic-kpi-grid');
+    const chartsGrid = document.getElementById('dynamic-charts-grid');
+    const insightsContainer = document.getElementById('dynamic-text-insights');
+
+    // Run analysis
+    const results = this.dataAnalyzer.analyze(this.rawData);
+    if (!results) return;
+
+    section.classList.remove('hidden');
+    kpiGrid.innerHTML = '';
+    chartsGrid.innerHTML = '';
+    insightsContainer.innerHTML = '';
+
+    console.log('Dynamic Analysis Results:', results);
+
+    // 1. Render KPIs (Numeric Sums)
+    Object.entries(results.columnTypes).forEach(([header, type]) => {
+      if (type === 'number' && results.stats[header]) {
+        const stat = results.stats[header];
+        // Only show if sum > 0 to avoid IDs or useless numbers
+        if (stat.sum > 0) {
+          const card = document.createElement('div');
+          card.className = 'metric-card';
+          card.innerHTML = `
+            <h3>Total ${header}</h3>
+            <p class="metric-value">${this.formatNumber(stat.sum)}</p>
+            <p class="metric-trend">Média: ${this.formatNumber(stat.avg)}</p>
+          `;
+          kpiGrid.appendChild(card);
+        }
+      }
+    });
+
+    // 2. Render Charts
+    // Strategy: 
+    // - Find a Date column for X-axis
+    // - Find Categorical columns for grouping
+    // - Plot Numeric columns against them
+
+    const dateCol = Object.keys(results.columnTypes).find(key => results.columnTypes[key] === 'date');
+    const numericCols = Object.keys(results.columnTypes).filter(key => results.columnTypes[key] === 'number');
+    const categoryCols = Object.keys(results.columnTypes).filter(key => results.columnTypes[key] === 'category');
+
+    // Chart 1: Time Series (if Date exists)
+    if (dateCol && numericCols.length > 0) {
+      // Pick top 3 numeric metrics to plot
+      const metrics = numericCols.slice(0, 3);
+      this.renderDynamicTimeChart(chartsGrid, dateCol, metrics);
+    }
+
+    // Chart 2: Category Distribution (if Category exists)
+    if (categoryCols.length > 0 && numericCols.length > 0) {
+      // Pick best category (most unique values but < 20)
+      const bestCat = categoryCols.find(c => results.stats[c].counts.length > 1 && results.stats[c].counts.length <= 15) || categoryCols[0];
+      // Pick first metric
+      const metric = numericCols[0];
+
+      this.renderDynamicCategoryChart(chartsGrid, bestCat, metric, results.stats[bestCat]);
+    }
+
+    // 3. Render Text Insights
+    this.renderDynamicInsights(insightsContainer, results);
+  }
+
+  renderDynamicTimeChart(container, dateCol, metrics) {
+    const canvas = document.createElement('canvas');
+    const wrapper = document.createElement('div');
+    wrapper.className = 'chart-container';
+    wrapper.appendChild(canvas);
+    container.appendChild(wrapper);
+
+    // Aggregate data by date
+    const timeData = {};
+    this.rawData.forEach(row => {
+      const dateVal = row[dateCol];
+      if (!dateVal) return;
+
+      // Simple date normalization
+      let key = String(dateVal).split('T')[0]; // Try to get YYYY-MM-DD
+
+      if (!timeData[key]) timeData[key] = {};
+
+      metrics.forEach(metric => {
+        const val = this.dataAnalyzer.parseNumber(row[metric]);
+        timeData[key][metric] = (timeData[key][metric] || 0) + val;
+      });
+    });
+
+    const labels = Object.keys(timeData).sort();
+    const datasets = metrics.map((metric, i) => {
+      const colors = ['#6366f1', '#10b981', '#f59e0b'];
+      return {
+        label: metric,
+        data: labels.map(date => timeData[date][metric]),
+        borderColor: colors[i % colors.length],
+        tension: 0.4,
+        fill: false
+      };
+    });
+
+    new Chart(canvas, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: { display: true, text: `Evolução Temporal por ${dateCol}` }
+        }
+      }
+    });
+  }
+
+  renderDynamicCategoryChart(container, categoryCol, metricCol, stats) {
+    const canvas = document.createElement('canvas');
+    const wrapper = document.createElement('div');
+    wrapper.className = 'chart-container';
+    wrapper.appendChild(canvas);
+    container.appendChild(wrapper);
+
+    const topCategories = stats.counts.slice(0, 10); // Top 10
+    const labels = topCategories.map(c => c[0]);
+
+    // Calculate metric sum per category
+    const dataValues = labels.map(cat => {
+      return this.rawData
+        .filter(row => String(row[categoryCol]).trim() === cat)
+        .reduce((sum, row) => sum + this.dataAnalyzer.parseNumber(row[metricCol]), 0);
+    });
+
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: `Total ${metricCol} por ${categoryCol}`,
+          data: dataValues,
+          backgroundColor: '#8b5cf6'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: { display: true, text: `Top 10 ${categoryCol} por ${metricCol}` }
+        }
+      }
+    });
+  }
+
+  renderDynamicInsights(container, results) {
+    const insights = [];
+
+    // Insight 1: Record Count
+    insights.push(`📊 <strong>Volume de Dados:</strong> Foram analisadas <strong>${results.rowCount}</strong> linhas.`);
+
+    // Insight 2: Top Categories
+    Object.entries(results.columnTypes).forEach(([header, type]) => {
+      if (type === 'category') {
+        const top = results.stats[header].top[0];
+        if (top) {
+          insights.push(`🏆 <strong>${header}:</strong> O valor mais comum é <strong>"${top[0]}"</strong> (${top[1]} ocorrências).`);
+        }
+      }
+    });
+
+    // Insight 3: Max Values
+    Object.entries(results.columnTypes).forEach(([header, type]) => {
+      if (type === 'number' && results.stats[header]) {
+        insights.push(`💰 <strong>${header}:</strong> O valor total é <strong>${this.formatNumber(results.stats[header].sum)}</strong>.`);
+      }
+    });
+
+    container.innerHTML = insights.map(i => `<div class="insight-item">${i}</div>`).join('');
   }
 
   // Modified to accept object instead of array
@@ -1139,85 +1464,61 @@ class MarketingDashboard {
   showDashboard() {
     console.log('showDashboard called');
     console.log('Total campaigns:', this.campaigns.length);
-    if (this.campaigns.length > 0) {
-      console.log('Sample campaign:', this.campaigns[0]);
-    }
-
-    try {
-      document.getElementById('upload-section').classList.add('hidden');
-      document.getElementById('metrics-section').classList.remove('hidden');
-      document.getElementById('executive-summary-section').classList.remove('hidden');
-      document.getElementById('insights-section').classList.remove('hidden');
-      document.getElementById('revenue-section').classList.remove('hidden');
-      document.getElementById('monthly-section').classList.remove('hidden');
-      document.getElementById('filters-section').classList.remove('hidden');
-      document.getElementById('charts-section').classList.remove('hidden');
-
-      console.log('Rendering metrics...');
-      this.renderMetrics();
-      console.log('Rendering executive summary...');
-      this.renderExecutiveSummary();
-      console.log('Rendering insights...');
-      this.renderInsights();
-      console.log('Rendering monthly analysis...');
-      this.renderMonthlyAnalysis();
-      console.log('Rendering charts...');
-      this.renderCharts();
-      console.log('Rendering table...');
-      this.renderTable();
-    } catch (error) {
-      console.error('Error rendering dashboard:', error);
-      alert('Erro ao renderizar o dashboard: ' + error.message);
-    }
+    console.log('Rendering table...');
+    this.renderTable();
+  } catch(error) {
+    console.error('Error rendering dashboard:', error);
+    alert('Erro ao renderizar o dashboard: ' + error.message);
   }
+}
 
-  // ============================================
-  // METRICS
-  // ============================================
-  renderMetrics() {
-    const filtered = this.getFilteredCampaigns();
+// ============================================
+// METRICS
+// ============================================
+renderMetrics() {
+  const filtered = this.getFilteredCampaigns();
 
-    const metrics = [
-      {
-        label: 'Total de Campanhas',
-        value: filtered.length,
-        icon: '📧',
-        gradient: 'var(--gradient-primary)'
-      },
-      {
-        label: 'Taxa de Abertura Média',
-        value: this.calculateAverage(filtered, 'openRate').toFixed(1) + '%',
-        icon: '📬',
-        gradient: 'var(--gradient-success)'
-      },
-      {
-        label: 'CTR Médio',
-        value: this.calculateAverage(filtered, 'clickRate').toFixed(2) + '%',
-        icon: '👆',
-        gradient: 'var(--gradient-secondary)'
-      },
-      {
-        label: 'Total de Conversões',
-        value: this.calculateSum(filtered, 'conversions').toLocaleString(),
-        icon: '🎯',
-        gradient: 'var(--gradient-warm)'
-      },
-      {
-        label: 'Emails Enviados',
-        value: this.calculateSum(filtered, 'sent').toLocaleString(),
-        icon: '📨',
-        gradient: 'var(--gradient-primary)'
-      },
-      {
-        label: 'Receita Total',
-        value: 'R$ ' + this.calculateSum(filtered, 'revenue').toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
-        icon: '💰',
-        gradient: 'var(--gradient-warm)'
-      }
-    ];
+  const metrics = [
+    {
+      label: 'Total de Campanhas',
+      value: filtered.length,
+      icon: '📧',
+      gradient: 'var(--gradient-primary)'
+    },
+    {
+      label: 'Taxa de Abertura Média',
+      value: this.calculateAverage(filtered, 'openRate').toFixed(1) + '%',
+      icon: '📬',
+      gradient: 'var(--gradient-success)'
+    },
+    {
+      label: 'CTR Médio',
+      value: this.calculateAverage(filtered, 'clickRate').toFixed(2) + '%',
+      icon: '👆',
+      gradient: 'var(--gradient-secondary)'
+    },
+    {
+      label: 'Total de Conversões',
+      value: this.calculateSum(filtered, 'conversions').toLocaleString(),
+      icon: '🎯',
+      gradient: 'var(--gradient-warm)'
+    },
+    {
+      label: 'Emails Enviados',
+      value: this.calculateSum(filtered, 'sent').toLocaleString(),
+      icon: '📨',
+      gradient: 'var(--gradient-primary)'
+    },
+    {
+      label: 'Receita Total',
+      value: 'R$ ' + this.calculateSum(filtered, 'revenue').toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+      icon: '💰',
+      gradient: 'var(--gradient-warm)'
+    }
+  ];
 
-    const grid = document.getElementById('metrics-grid');
-    grid.innerHTML = metrics.map(metric => `
+  const grid = document.getElementById('metrics-grid');
+  grid.innerHTML = metrics.map(metric => `
       <div class="metric-card fade-in">
         <div class="metric-header">
           <span class="metric-label">${metric.label}</span>
@@ -1228,40 +1529,40 @@ class MarketingDashboard {
         <div class="metric-value">${metric.value}</div>
       </div>
     `).join('');
-  }
+}
 
-  calculateAverage(campaigns, field) {
-    if (campaigns.length === 0) return 0;
-    return campaigns.reduce((sum, c) => sum + (c[field] || 0), 0) / campaigns.length;
-  }
+calculateAverage(campaigns, field) {
+  if (campaigns.length === 0) return 0;
+  return campaigns.reduce((sum, c) => sum + (c[field] || 0), 0) / campaigns.length;
+}
 
-  calculateSum(campaigns, field) {
-    return campaigns.reduce((sum, c) => sum + (c[field] || 0), 0);
-  }
+calculateSum(campaigns, field) {
+  return campaigns.reduce((sum, c) => sum + (c[field] || 0), 0);
+}
 
-  // ============================================
-  // EXECUTIVE SUMMARY
-  // ============================================
-  renderExecutiveSummary() {
-    const filtered = this.getFilteredCampaigns();
-    if (filtered.length === 0) return;
+// ============================================
+// EXECUTIVE SUMMARY
+// ============================================
+renderExecutiveSummary() {
+  const filtered = this.getFilteredCampaigns();
+  if (filtered.length === 0) return;
 
-    const summary = {
-      totalCampaigns: filtered.length,
-      totalSent: this.calculateSum(filtered, 'sent'),
-      avgOpenRate: this.calculateAverage(filtered, 'openRate'),
-      avgClickRate: this.calculateAverage(filtered, 'clickRate'),
-      totalConversions: this.calculateSum(filtered, 'conversions'),
-      totalRevenue: this.calculateSum(filtered, 'revenue')
-    };
+  const summary = {
+    totalCampaigns: filtered.length,
+    totalSent: this.calculateSum(filtered, 'sent'),
+    avgOpenRate: this.calculateAverage(filtered, 'openRate'),
+    avgClickRate: this.calculateAverage(filtered, 'clickRate'),
+    totalConversions: this.calculateSum(filtered, 'conversions'),
+    totalRevenue: this.calculateSum(filtered, 'revenue')
+  };
 
-    const bestCampaign = [...filtered].sort((a, b) => b.openRate - a.openRate)[0];
+  const bestCampaign = [...filtered].sort((a, b) => b.openRate - a.openRate)[0];
 
-    // Generate Tips
-    const tips = this.generateTips(filtered);
+  // Generate Tips
+  const tips = this.generateTips(filtered);
 
-    const card = document.getElementById('executive-summary-card');
-    card.innerHTML = `
+  const card = document.getElementById('executive-summary-card');
+  card.innerHTML = `
       <div class="summary-grid">
         <div class="summary-item">
           <div class="summary-label">Total de Campanhas</div>
@@ -1312,66 +1613,66 @@ class MarketingDashboard {
         </div>
       </div>
     `;
+}
+
+generateTips(campaigns) {
+  const tips = [];
+  const avgOpen = this.calculateAverage(campaigns, 'openRate');
+  const avgClick = this.calculateAverage(campaigns, 'clickRate');
+
+  if (avgOpen < 20) {
+    tips.push("Teste linhas de assunto mais curtas e personalizadas para aumentar a abertura.");
+  } else {
+    tips.push("Mantenha o estilo das linhas de assunto atuais, pois estão performando bem.");
   }
 
-  generateTips(campaigns) {
-    const tips = [];
-    const avgOpen = this.calculateAverage(campaigns, 'openRate');
-    const avgClick = this.calculateAverage(campaigns, 'clickRate');
-
-    if (avgOpen < 20) {
-      tips.push("Teste linhas de assunto mais curtas e personalizadas para aumentar a abertura.");
-    } else {
-      tips.push("Mantenha o estilo das linhas de assunto atuais, pois estão performando bem.");
-    }
-
-    if (avgClick < 2) {
-      tips.push("Revise seus CTAs (Chamadas para Ação). Tente usar cores contrastantes e textos mais diretos.");
-    }
-
-    // Day of week analysis (simple heuristic)
-    const days = {};
-    campaigns.forEach(c => {
-      if (c.date) {
-        const date = new Date(c.date);
-        if (!isNaN(date)) {
-          const day = date.toLocaleDateString('pt-BR', { weekday: 'long' });
-          if (!days[day]) days[day] = { count: 0, opens: 0 };
-          days[day].count++;
-          days[day].opens += c.openRate;
-        }
-      }
-    });
-
-    let bestDay = '';
-    let maxAvg = 0;
-    for (const [day, data] of Object.entries(days)) {
-      const avg = data.opens / data.count;
-      if (avg > maxAvg) {
-        maxAvg = avg;
-        bestDay = day;
-      }
-    }
-
-    if (bestDay) {
-      tips.push(`Seus emails enviados na <strong>${bestDay}</strong> tendem a ter melhor abertura.`);
-    }
-
-    if (tips.length < 3) {
-      tips.push("Segmente sua base de contatos para enviar conteúdo mais relevante.");
-    }
-
-    return tips.slice(0, 3);
+  if (avgClick < 2) {
+    tips.push("Revise seus CTAs (Chamadas para Ação). Tente usar cores contrastantes e textos mais diretos.");
   }
 
-  copySummaryToClipboard() {
-    const filtered = this.getFilteredCampaigns();
-    if (filtered.length === 0) return;
+  // Day of week analysis (simple heuristic)
+  const days = {};
+  campaigns.forEach(c => {
+    if (c.date) {
+      const date = new Date(c.date);
+      if (!isNaN(date)) {
+        const day = date.toLocaleDateString('pt-BR', { weekday: 'long' });
+        if (!days[day]) days[day] = { count: 0, opens: 0 };
+        days[day].count++;
+        days[day].opens += c.openRate;
+      }
+    }
+  });
 
-    const bestCampaign = [...filtered].sort((a, b) => b.openRate - a.openRate)[0];
-    const tips = this.generateTips(filtered);
+  let bestDay = '';
+  let maxAvg = 0;
+  for (const [day, data] of Object.entries(days)) {
+    const avg = data.opens / data.count;
+    if (avg > maxAvg) {
+      maxAvg = avg;
+      bestDay = day;
+    }
+  }
 
-    const text = `
+  if (bestDay) {
+    tips.push(`Seus emails enviados na <strong>${bestDay}</strong> tendem a ter melhor abertura.`);
+  }
+
+  if (tips.length < 3) {
+    tips.push("Segmente sua base de contatos para enviar conteúdo mais relevante.");
+  }
+
+  return tips.slice(0, 3);
+}
+
+copySummaryToClipboard() {
+  const filtered = this.getFilteredCampaigns();
+  if (filtered.length === 0) return;
+
+  const bestCampaign = [...filtered].sort((a, b) => b.openRate - a.openRate)[0];
+  const tips = this.generateTips(filtered);
+
+  const text = `
 📊 RESUMO EXECUTIVO - Marketing Analytics
 
 📧 Total de Campanhas: ${filtered.length}
@@ -1389,296 +1690,296 @@ Taxa de Abertura: ${bestCampaign.openRate.toFixed(1)}%
 ${tips.map(t => `- ${t.replace(/<[^>]*>/g, '')}`).join('\n')}
     `.trim();
 
-    navigator.clipboard.writeText(text).then(() => {
-      alert('Resumo copiado para a área de transferência!');
-    });
-  }
+  navigator.clipboard.writeText(text).then(() => {
+    alert('Resumo copiado para a área de transferência!');
+  });
+}
 
-  // ============================================
-  // FILTERS
-  // ============================================
+// ============================================
+// FILTERS
+// ============================================
 
 
-  getFilteredCampaigns() {
-    const filtered = this.campaigns.filter(campaign => {
-      // Date range filter
-      if (this.currentFilters.dateRange !== 'all') {
-        const campaignDate = new Date(campaign.date);
-        const daysAgo = parseInt(this.currentFilters.dateRange);
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - daysAgo);
+getFilteredCampaigns() {
+  const filtered = this.campaigns.filter(campaign => {
+    // Date range filter
+    if (this.currentFilters.dateRange !== 'all') {
+      const campaignDate = new Date(campaign.date);
+      const daysAgo = parseInt(this.currentFilters.dateRange);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysAgo);
 
-        if (campaignDate < cutoffDate) {
-          return false;
-        }
-      }
-
-      // Status filter
-      if (this.currentFilters.status !== 'all') {
-        const status = campaign.status.toLowerCase();
-        if (!status.includes(this.currentFilters.status)) {
-          return false;
-        }
-      }
-
-      // Search filter
-      if (this.currentFilters.search) {
-        const searchLower = this.currentFilters.search;
-        const nameMatch = campaign.name.toLowerCase().includes(searchLower);
-        const crmMatch = campaign.crm.toLowerCase().includes(searchLower);
-
-        if (!nameMatch && !crmMatch) {
-          return false;
-        }
-      }
-
-      // Campaign type filter
-      if (this.currentFilters.campaignType !== 'all' && campaign.type !== this.currentFilters.campaignType) {
+      if (campaignDate < cutoffDate) {
         return false;
       }
-
-      return true;
-    });
-
-    console.log('Filtered campaigns count:', filtered.length);
-    return filtered;
-  }
-
-  applyFilters() {
-    this.renderMetrics();
-    this.renderInsights();
-    this.renderRevenueByChannel();
-    this.renderMonthlyAnalysis();
-    this.renderCharts();
-    this.renderTable();
-  }
-
-  // ============================================
-  // CHARTS
-  // ============================================
-  renderCharts() {
-    this.renderTimelineChart();
-    this.renderFunnelChart();
-    this.renderTopCampaignsChart();
-  }
-
-  renderTimelineChart() {
-    const ctx = document.getElementById('timeline-chart');
-    if (!ctx) return;
-
-    const filtered = this.getFilteredCampaigns();
-
-    // Group by month (YYYY-MM) instead of day
-    const monthGroups = {};
-    filtered.forEach(campaign => {
-      if (!campaign.date) return;
-
-      const date = new Date(campaign.date);
-      if (isNaN(date)) return;
-
-      // Format as YYYY-MM
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-
-      if (!monthGroups[monthKey]) {
-        monthGroups[monthKey] = { opens: 0, clicks: 0, conversions: 0 };
-      }
-      monthGroups[monthKey].opens += campaign.opens;
-      monthGroups[monthKey].clicks += campaign.clicks;
-      monthGroups[monthKey].conversions += campaign.conversions;
-    });
-
-    const months = Object.keys(monthGroups).sort();
-    const metric = document.getElementById('timeline-metric')?.value || 'opens';
-
-    if (this.charts.timeline) {
-      this.charts.timeline.destroy();
     }
 
-    this.charts.timeline = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: months.map(m => this.formatMonth(m)),
-        datasets: [{
-          label: this.getMetricLabel(metric),
-          data: months.map(month => monthGroups[month][metric]),
-          borderColor: '#6366f1',
-          backgroundColor: 'rgba(99, 102, 241, 0.1)',
-          tension: 0.4,
-          fill: true
-        }]
-      },
-      options: this.getChartOptions()
-    });
-  }
-
-  updateTimelineChart() {
-    this.renderTimelineChart();
-  }
-
-  renderFunnelChart() {
-    const ctx = document.getElementById('funnel-chart');
-    if (!ctx) return;
-
-    const filtered = this.getFilteredCampaigns();
-
-    const sent = this.calculateSum(filtered, 'sent');
-    const opens = this.calculateSum(filtered, 'opens');
-    const clicks = this.calculateSum(filtered, 'clicks');
-    const conversions = this.calculateSum(filtered, 'conversions');
-
-    if (this.charts.funnel) {
-      this.charts.funnel.destroy();
+    // Status filter
+    if (this.currentFilters.status !== 'all') {
+      const status = campaign.status.toLowerCase();
+      if (!status.includes(this.currentFilters.status)) {
+        return false;
+      }
     }
 
-    this.charts.funnel = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: ['Enviados', 'Abertos', 'Cliques', 'Conversões'],
-        datasets: [{
-          label: 'Quantidade',
-          data: [sent, opens, clicks, conversions],
-          backgroundColor: [
-            'rgba(99, 102, 241, 0.8)',
-            'rgba(139, 92, 246, 0.8)',
-            'rgba(236, 72, 153, 0.8)',
-            'rgba(16, 185, 129, 0.8)'
-          ]
-        }]
-      },
-      options: {
-        ...this.getChartOptions(),
-        indexAxis: 'y'
+    // Search filter
+    if (this.currentFilters.search) {
+      const searchLower = this.currentFilters.search;
+      const nameMatch = campaign.name.toLowerCase().includes(searchLower);
+      const crmMatch = campaign.crm.toLowerCase().includes(searchLower);
+
+      if (!nameMatch && !crmMatch) {
+        return false;
       }
-    });
-  }
-
-  renderTopCampaignsChart() {
-    const ctx = document.getElementById('top-campaigns-chart');
-    if (!ctx) return;
-
-    const filtered = this.getFilteredCampaigns();
-
-    // Filter only email marketing campaigns
-    const emailCampaigns = filtered.filter(c => c.type === 'email');
-
-    // Group by campaign name and aggregate metrics
-    const grouped = {};
-    emailCampaigns.forEach(campaign => {
-      if (!grouped[campaign.name]) {
-        grouped[campaign.name] = {
-          name: campaign.name,
-          sent: 0,
-          opens: 0,
-          clicks: 0,
-          conversions: 0,
-          revenue: 0,
-          count: 0
-        };
-      }
-      grouped[campaign.name].sent += campaign.sent;
-      grouped[campaign.name].opens += campaign.opens;
-      grouped[campaign.name].clicks += campaign.clicks;
-      grouped[campaign.name].conversions += campaign.conversions;
-      grouped[campaign.name].revenue += campaign.revenue;
-      grouped[campaign.name].count++;
-    });
-
-    // Calculate rates for grouped campaigns
-    const groupedArray = Object.values(grouped).map(g => ({
-      ...g,
-      openRate: g.sent > 0 ? (g.opens / g.sent) * 100 : 0,
-      clickRate: g.sent > 0 ? (g.clicks / g.sent) * 100 : 0
-    }));
-
-    const metric = document.getElementById('top-campaigns-metric')?.value || 'openRate';
-    const sorted = groupedArray.sort((a, b) => b[metric] - a[metric]).slice(0, 10);
-
-    if (this.charts.topCampaigns) {
-      this.charts.topCampaigns.destroy();
     }
 
-    this.charts.topCampaigns = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: sorted.map(c => c.name.substring(0, 40)),
-        datasets: [{
-          label: this.getMetricLabel(metric),
-          data: sorted.map(c => c[metric]),
-          backgroundColor: 'rgba(99, 102, 241, 0.8)'
-        }]
-      },
-      options: this.getChartOptions()
-    });
+    // Campaign type filter
+    if (this.currentFilters.campaignType !== 'all' && campaign.type !== this.currentFilters.campaignType) {
+      return false;
+    }
+
+    return true;
+  });
+
+  console.log('Filtered campaigns count:', filtered.length);
+  return filtered;
+}
+
+applyFilters() {
+  this.renderMetrics();
+  this.renderInsights();
+  this.renderRevenueByChannel();
+  this.renderMonthlyAnalysis();
+  this.renderCharts();
+  this.renderTable();
+}
+
+// ============================================
+// CHARTS
+// ============================================
+renderCharts() {
+  this.renderTimelineChart();
+  this.renderFunnelChart();
+  this.renderTopCampaignsChart();
+}
+
+renderTimelineChart() {
+  const ctx = document.getElementById('timeline-chart');
+  if (!ctx) return;
+
+  const filtered = this.getFilteredCampaigns();
+
+  // Group by month (YYYY-MM) instead of day
+  const monthGroups = {};
+  filtered.forEach(campaign => {
+    if (!campaign.date) return;
+
+    const date = new Date(campaign.date);
+    if (isNaN(date)) return;
+
+    // Format as YYYY-MM
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+    if (!monthGroups[monthKey]) {
+      monthGroups[monthKey] = { opens: 0, clicks: 0, conversions: 0 };
+    }
+    monthGroups[monthKey].opens += campaign.opens;
+    monthGroups[monthKey].clicks += campaign.clicks;
+    monthGroups[monthKey].conversions += campaign.conversions;
+  });
+
+  const months = Object.keys(monthGroups).sort();
+  const metric = document.getElementById('timeline-metric')?.value || 'opens';
+
+  if (this.charts.timeline) {
+    this.charts.timeline.destroy();
   }
 
-  updateTopCampaignsChart() {
-    this.renderTopCampaignsChart();
+  this.charts.timeline = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: months.map(m => this.formatMonth(m)),
+      datasets: [{
+        label: this.getMetricLabel(metric),
+        data: months.map(month => monthGroups[month][metric]),
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        tension: 0.4,
+        fill: true
+      }]
+    },
+    options: this.getChartOptions()
+  });
+}
+
+updateTimelineChart() {
+  this.renderTimelineChart();
+}
+
+renderFunnelChart() {
+  const ctx = document.getElementById('funnel-chart');
+  if (!ctx) return;
+
+  const filtered = this.getFilteredCampaigns();
+
+  const sent = this.calculateSum(filtered, 'sent');
+  const opens = this.calculateSum(filtered, 'opens');
+  const clicks = this.calculateSum(filtered, 'clicks');
+  const conversions = this.calculateSum(filtered, 'conversions');
+
+  if (this.charts.funnel) {
+    this.charts.funnel.destroy();
   }
 
-  updateMonthlyChart() {
-    this.renderMonthlyAnalysis();
+  this.charts.funnel = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Enviados', 'Abertos', 'Cliques', 'Conversões'],
+      datasets: [{
+        label: 'Quantidade',
+        data: [sent, opens, clicks, conversions],
+        backgroundColor: [
+          'rgba(99, 102, 241, 0.8)',
+          'rgba(139, 92, 246, 0.8)',
+          'rgba(236, 72, 153, 0.8)',
+          'rgba(16, 185, 129, 0.8)'
+        ]
+      }]
+    },
+    options: {
+      ...this.getChartOptions(),
+      indexAxis: 'y'
+    }
+  });
+}
+
+renderTopCampaignsChart() {
+  const ctx = document.getElementById('top-campaigns-chart');
+  if (!ctx) return;
+
+  const filtered = this.getFilteredCampaigns();
+
+  // Filter only email marketing campaigns
+  const emailCampaigns = filtered.filter(c => c.type === 'email');
+
+  // Group by campaign name and aggregate metrics
+  const grouped = {};
+  emailCampaigns.forEach(campaign => {
+    if (!grouped[campaign.name]) {
+      grouped[campaign.name] = {
+        name: campaign.name,
+        sent: 0,
+        opens: 0,
+        clicks: 0,
+        conversions: 0,
+        revenue: 0,
+        count: 0
+      };
+    }
+    grouped[campaign.name].sent += campaign.sent;
+    grouped[campaign.name].opens += campaign.opens;
+    grouped[campaign.name].clicks += campaign.clicks;
+    grouped[campaign.name].conversions += campaign.conversions;
+    grouped[campaign.name].revenue += campaign.revenue;
+    grouped[campaign.name].count++;
+  });
+
+  // Calculate rates for grouped campaigns
+  const groupedArray = Object.values(grouped).map(g => ({
+    ...g,
+    openRate: g.sent > 0 ? (g.opens / g.sent) * 100 : 0,
+    clickRate: g.sent > 0 ? (g.clicks / g.sent) * 100 : 0
+  }));
+
+  const metric = document.getElementById('top-campaigns-metric')?.value || 'openRate';
+  const sorted = groupedArray.sort((a, b) => b[metric] - a[metric]).slice(0, 10);
+
+  if (this.charts.topCampaigns) {
+    this.charts.topCampaigns.destroy();
   }
 
+  this.charts.topCampaigns = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(c => c.name.substring(0, 40)),
+      datasets: [{
+        label: this.getMetricLabel(metric),
+        data: sorted.map(c => c[metric]),
+        backgroundColor: 'rgba(99, 102, 241, 0.8)'
+      }]
+    },
+    options: this.getChartOptions()
+  });
+}
 
-  getChartOptions() {
-    return {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: true,
-          labels: {
-            color: getComputedStyle(document.documentElement)
-              .getPropertyValue('--text-primary').trim()
-          }
+updateTopCampaignsChart() {
+  this.renderTopCampaignsChart();
+}
+
+updateMonthlyChart() {
+  this.renderMonthlyAnalysis();
+}
+
+
+getChartOptions() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: true,
+        labels: {
+          color: getComputedStyle(document.documentElement)
+            .getPropertyValue('--text-primary').trim()
         }
-      },
-      scales: {
-        x: {
-          ticks: {
-            color: getComputedStyle(document.documentElement)
-              .getPropertyValue('--text-secondary').trim()
-          },
-          grid: {
-            color: getComputedStyle(document.documentElement)
-              .getPropertyValue('--border-color').trim()
-          }
+      }
+    },
+    scales: {
+      x: {
+        ticks: {
+          color: getComputedStyle(document.documentElement)
+            .getPropertyValue('--text-secondary').trim()
         },
-        y: {
-          ticks: {
-            color: getComputedStyle(document.documentElement)
-              .getPropertyValue('--text-secondary').trim()
-          },
-          grid: {
-            color: getComputedStyle(document.documentElement)
-              .getPropertyValue('--border-color').trim()
-          }
+        grid: {
+          color: getComputedStyle(document.documentElement)
+            .getPropertyValue('--border-color').trim()
+        }
+      },
+      y: {
+        ticks: {
+          color: getComputedStyle(document.documentElement)
+            .getPropertyValue('--text-secondary').trim()
+        },
+        grid: {
+          color: getComputedStyle(document.documentElement)
+            .getPropertyValue('--border-color').trim()
         }
       }
-    };
-  }
+    }
+  };
+}
 
-  getMetricLabel(metric) {
-    const labels = {
-      opens: 'Aberturas',
-      clicks: 'Cliques',
-      conversions: 'Conversões',
-      openRate: 'Taxa de Abertura (%)',
-      clickRate: 'CTR (%)',
-      sent: 'Enviados'
-    };
-    return labels[metric] || metric;
-  }
+getMetricLabel(metric) {
+  const labels = {
+    opens: 'Aberturas',
+    clicks: 'Cliques',
+    conversions: 'Conversões',
+    openRate: 'Taxa de Abertura (%)',
+    clickRate: 'CTR (%)',
+    sent: 'Enviados'
+  };
+  return labels[metric] || metric;
+}
 
-  // ============================================
-  // INSIGHTS GENERATION
-  // ============================================
-  renderInsights() {
-    const filtered = this.getFilteredCampaigns();
-    const insights = this.generateInsights(filtered);
+// ============================================
+// INSIGHTS GENERATION
+// ============================================
+renderInsights() {
+  const filtered = this.getFilteredCampaigns();
+  const insights = this.generateInsights(filtered);
 
-    const grid = document.getElementById('insights-grid');
-    grid.innerHTML = insights.map(insight => `
+  const grid = document.getElementById('insights-grid');
+  grid.innerHTML = insights.map(insight => `
       <div class="insight-card ${insight.type} fade-in">
         <div class="insight-header">
           <span class="insight-icon">${insight.icon}</span>
@@ -1687,40 +1988,40 @@ ${tips.map(t => `- ${t.replace(/<[^>]*>/g, '')}`).join('\n')}
         <p class="insight-text">${insight.text}</p>
       </div>
     `).join('');
-  }
+}
 
-  renderRevenueByChannel() {
-    const filtered = this.getFilteredCampaigns();
+renderRevenueByChannel() {
+  const filtered = this.getFilteredCampaigns();
 
-    // Group revenue by type
-    const revenueByType = {
-      email: 0,
-      automation: 0,
-      sms: 0
-    };
+  // Group revenue by type
+  const revenueByType = {
+    email: 0,
+    automation: 0,
+    sms: 0
+  };
 
-    filtered.forEach(campaign => {
-      const type = campaign.type || 'email';
-      if (revenueByType[type] !== undefined) {
-        revenueByType[type] += campaign.revenue || 0;
-      }
-    });
+  filtered.forEach(campaign => {
+    const type = campaign.type || 'email';
+    if (revenueByType[type] !== undefined) {
+      revenueByType[type] += campaign.revenue || 0;
+    }
+  });
 
-    console.log('Revenue by Type:', revenueByType);
-    const total = Object.values(revenueByType).reduce((a, b) => a + b, 0);
+  console.log('Revenue by Type:', revenueByType);
+  const total = Object.values(revenueByType).reduce((a, b) => a + b, 0);
 
-    const channels = [
-      { type: 'email', label: 'Email Marketing', icon: '📧', color: '#6366f1' },
-      { type: 'automation', label: 'Automação', icon: '🤖', color: '#8b5cf6' },
-      { type: 'sms', label: 'SMS', icon: '📱', color: '#ec4899' }
-    ];
+  const channels = [
+    { type: 'email', label: 'Email Marketing', icon: '📧', color: '#6366f1' },
+    { type: 'automation', label: 'Automação', icon: '🤖', color: '#8b5cf6' },
+    { type: 'sms', label: 'SMS', icon: '📱', color: '#ec4899' }
+  ];
 
-    const grid = document.getElementById('revenue-channels-grid');
-    grid.innerHTML = channels.map(channel => {
-      const revenue = revenueByType[channel.type];
-      const percentage = total > 0 ? (revenue / total) * 100 : 0;
+  const grid = document.getElementById('revenue-channels-grid');
+  grid.innerHTML = channels.map(channel => {
+    const revenue = revenueByType[channel.type];
+    const percentage = total > 0 ? (revenue / total) * 100 : 0;
 
-      return `
+    return `
         <div class="revenue-channel-card" style="border-left: 4px solid ${channel.color}">
           <div class="revenue-channel-header">
             <span class="revenue-channel-icon">${channel.icon}</span>
@@ -1737,111 +2038,111 @@ ${tips.map(t => `- ${t.replace(/<[^>]*>/g, '')}`).join('\n')}
           </div>
         </div>
       `;
-    }).join('');
+  }).join('');
+}
+
+
+generateInsights(campaigns) {
+  if (campaigns.length === 0) return [];
+
+  const insights = [];
+
+  // Separate by type
+  const emailCampaigns = campaigns.filter(c => c.type === 'email');
+  const automationCampaigns = campaigns.filter(c => c.type === 'automation');
+
+  // Best performing campaign
+  const bestCampaign = [...campaigns].sort((a, b) => b.openRate - a.openRate)[0];
+  if (bestCampaign) {
+    insights.push({
+      type: 'positive',
+      icon: '🏆',
+      title: 'Melhor Desempenho',
+      text: `A campanha "${bestCampaign.name}" teve a melhor taxa de abertura com <span class="insight-highlight">${bestCampaign.openRate.toFixed(1)}%</span>, superando a média de ${this.calculateAverage(campaigns, 'openRate').toFixed(1)}%.`
+    });
   }
 
+  // REMOVED: Email vs Automation comparison
 
-  generateInsights(campaigns) {
-    if (campaigns.length === 0) return [];
+  // Conversion rate insight
+  const avgConversionRate = this.calculateAverage(campaigns, 'conversionRate');
+  if (avgConversionRate > 0) {
+    const conversionType = avgConversionRate > 5 ? 'positive' : avgConversionRate > 2 ? 'neutral' : 'negative';
+    insights.push({
+      type: conversionType,
+      icon: '🎯',
+      title: 'Taxa de Conversão',
+      text: `A taxa média de conversão está em <span class="insight-highlight">${avgConversionRate.toFixed(2)}%</span>. ${avgConversionRate > 5 ? 'Excelente resultado!' : avgConversionRate > 2 ? 'Bom resultado, mas há espaço para melhorias.' : 'Considere otimizar suas chamadas para ação.'}`
+    });
+  }
 
-    const insights = [];
+  // Volume insight
+  const totalSent = this.calculateSum(campaigns, 'sent');
+  const totalConversions = this.calculateSum(campaigns, 'conversions');
+  insights.push({
+    type: 'neutral',
+    icon: '📊',
+    title: 'Volume Total',
+    text: `Foram enviados <span class="insight-highlight">${totalSent.toLocaleString()}</span> emails, gerando <span class="insight-highlight">${totalConversions.toLocaleString()}</span> conversões em ${campaigns.length} campanhas analisadas.`
+  });
 
-    // Separate by type
-    const emailCampaigns = campaigns.filter(c => c.type === 'email');
-    const automationCampaigns = campaigns.filter(c => c.type === 'automation');
-
-    // Best performing campaign
-    const bestCampaign = [...campaigns].sort((a, b) => b.openRate - a.openRate)[0];
-    if (bestCampaign) {
-      insights.push({
-        type: 'positive',
-        icon: '🏆',
-        title: 'Melhor Desempenho',
-        text: `A campanha "${bestCampaign.name}" teve a melhor taxa de abertura com <span class="insight-highlight">${bestCampaign.openRate.toFixed(1)}%</span>, superando a média de ${this.calculateAverage(campaigns, 'openRate').toFixed(1)}%.`
-      });
+  // CRM performance
+  const crmPerformance = {};
+  campaigns.forEach(c => {
+    if (!crmPerformance[c.crm]) {
+      crmPerformance[c.crm] = [];
     }
+    crmPerformance[c.crm].push(c.openRate);
+  });
 
-    // REMOVED: Email vs Automation comparison
+  const crmAvgs = Object.keys(crmPerformance).map(crm => ({
+    crm,
+    avg: crmPerformance[crm].reduce((a, b) => a + b, 0) / crmPerformance[crm].length
+  })).sort((a, b) => b.avg - a.avg);
 
-    // Conversion rate insight
-    const avgConversionRate = this.calculateAverage(campaigns, 'conversionRate');
-    if (avgConversionRate > 0) {
-      const conversionType = avgConversionRate > 5 ? 'positive' : avgConversionRate > 2 ? 'neutral' : 'negative';
-      insights.push({
-        type: conversionType,
-        icon: '🎯',
-        title: 'Taxa de Conversão',
-        text: `A taxa média de conversão está em <span class="insight-highlight">${avgConversionRate.toFixed(2)}%</span>. ${avgConversionRate > 5 ? 'Excelente resultado!' : avgConversionRate > 2 ? 'Bom resultado, mas há espaço para melhorias.' : 'Considere otimizar suas chamadas para ação.'}`
-      });
-    }
-
-    // Volume insight
-    const totalSent = this.calculateSum(campaigns, 'sent');
-    const totalConversions = this.calculateSum(campaigns, 'conversions');
+  if (crmAvgs.length > 1) {
+    const best = crmAvgs[0];
     insights.push({
       type: 'neutral',
-      icon: '📊',
-      title: 'Volume Total',
-      text: `Foram enviados <span class="insight-highlight">${totalSent.toLocaleString()}</span> emails, gerando <span class="insight-highlight">${totalConversions.toLocaleString()}</span> conversões em ${campaigns.length} campanhas analisadas.`
+      icon: '🔧',
+      title: 'Desempenho por CRM',
+      text: `${best.crm} apresenta a melhor taxa média de abertura entre os CRMs com <span class="insight-highlight">${best.avg.toFixed(1)}%</span>.`
     });
-
-    // CRM performance
-    const crmPerformance = {};
-    campaigns.forEach(c => {
-      if (!crmPerformance[c.crm]) {
-        crmPerformance[c.crm] = [];
-      }
-      crmPerformance[c.crm].push(c.openRate);
-    });
-
-    const crmAvgs = Object.keys(crmPerformance).map(crm => ({
-      crm,
-      avg: crmPerformance[crm].reduce((a, b) => a + b, 0) / crmPerformance[crm].length
-    })).sort((a, b) => b.avg - a.avg);
-
-    if (crmAvgs.length > 1) {
-      const best = crmAvgs[0];
-      insights.push({
-        type: 'neutral',
-        icon: '🔧',
-        title: 'Desempenho por CRM',
-        text: `${best.crm} apresenta a melhor taxa média de abertura entre os CRMs com <span class="insight-highlight">${best.avg.toFixed(1)}%</span>.`
-      });
-    }
-
-    return insights;
   }
 
-  // ============================================
-  // MONTHLY ANALYSIS
-  // ============================================
-  renderMonthlyAnalysis() {
-    const filtered = this.getFilteredCampaigns();
-    const monthlyData = this.groupByMonth(filtered);
+  return insights;
+}
 
-    // Render monthly cards
-    const container = document.getElementById('monthly-comparison');
-    const months = Object.keys(monthlyData).sort().reverse().slice(0, 4); // Last 4 months
+// ============================================
+// MONTHLY ANALYSIS
+// ============================================
+renderMonthlyAnalysis() {
+  const filtered = this.getFilteredCampaigns();
+  const monthlyData = this.groupByMonth(filtered);
 
-    container.innerHTML = months.map((month, index) => {
-      const data = monthlyData[month];
-      const prevMonth = months[index + 1];
-      const prevData = prevMonth ? monthlyData[prevMonth] : null;
+  // Render monthly cards
+  const container = document.getElementById('monthly-comparison');
+  const months = Object.keys(monthlyData).sort().reverse().slice(0, 4); // Last 4 months
 
-      let comparisonText = '';
-      if (prevData) {
-        const openRateDiff = data.avgOpen - prevData.avgOpen;
-        const arrow = openRateDiff > 0 ? '↑' : '↓';
-        const arrowClass = openRateDiff > 0 ? 'up' : 'down';
-        comparisonText = `
+  container.innerHTML = months.map((month, index) => {
+    const data = monthlyData[month];
+    const prevMonth = months[index + 1];
+    const prevData = prevMonth ? monthlyData[prevMonth] : null;
+
+    let comparisonText = '';
+    if (prevData) {
+      const openRateDiff = data.avgOpen - prevData.avgOpen;
+      const arrow = openRateDiff > 0 ? '↑' : '↓';
+      const arrowClass = openRateDiff > 0 ? 'up' : 'down';
+      comparisonText = `
               <div class="monthly-comparison-text">
                 <span class="comparison-arrow ${arrowClass}">${arrow}</span>
                 <span>${Math.abs(openRateDiff).toFixed(1)}% vs mês anterior</span>
               </div>
             `;
-      }
+    }
 
-      return `
+    return `
         <div class="monthly-card fade-in">
           <div class="monthly-header">
             <h3 class="monthly-month">${this.formatMonth(month)}</h3>
@@ -1868,152 +2169,152 @@ ${tips.map(t => `- ${t.replace(/<[^>]*>/g, '')}`).join('\n')}
           ${comparisonText}
         </div>
       `;
-    }).join('');
+  }).join('');
 
-    this.renderMonthlyChart(monthlyData);
-  }
+  this.renderMonthlyChart(monthlyData);
+}
 
-  groupByMonth(campaigns) {
-    const groups = {};
-    campaigns.forEach(c => {
-      if (!c.date) return;
-      const date = new Date(c.date);
-      if (isNaN(date)) return;
+groupByMonth(campaigns) {
+  const groups = {};
+  campaigns.forEach(c => {
+    if (!c.date) return;
+    const date = new Date(c.date);
+    if (isNaN(date)) return;
 
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const month = monthKey;
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const month = monthKey;
 
-      if (!groups[month]) {
-        groups[month] = {
-          count: 0,
-          opens: 0,
-          clicks: 0,
-          conversions: 0,
-          revenue: 0,
-          sent: 0
-        };
-      }
-
-      groups[month].count++;
-      groups[month].opens += c.openRate; // Summing rates to average later
-      groups[month].clicks += c.clickRate;
-      groups[month].conversions += c.conversions;
-      groups[month].revenue += c.revenue;
-      groups[month].sent += c.sent;
-    });
-
-    // Calculate averages
-    Object.keys(groups).forEach(month => {
-      groups[month].avgOpen = groups[month].opens / groups[month].count;
-      groups[month].avgClick = groups[month].clicks / groups[month].count;
-      groups[month].totalConversions = groups[month].conversions;
-      groups[month].totalRevenue = groups[month].revenue;
-    });
-
-    return groups;
-  }
-
-  formatMonth(monthKey) {
-    const [year, month] = monthKey.split('-');
-    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    return `${months[parseInt(month) - 1]}/${year}`;
-  }
-
-  renderMonthlyChart(monthlyData) {
-    const ctx = document.getElementById('monthly-chart');
-    if (!ctx) return;
-
-    const months = Object.keys(monthlyData).sort((a, b) => {
-      // Custom sort for months if needed, but standard string sort might be okay for "Month Year" 
-      // strictly speaking we should parse dates, but let's keep it simple for now
-      return 0;
-    });
-
-    // Better sorting logic
-    const sortedMonths = months.sort((a, b) => {
-      // Extract month and year to compare dates
-      // This is a simplification
-      return 0;
-    });
-
-    const metric = document.getElementById('monthly-metric')?.value || 'openRate';
-
-    const getData = (m) => {
-      if (metric === 'openRate') return monthlyData[m].avgOpen;
-      if (metric === 'clickRate') return monthlyData[m].avgClick;
-      if (metric === 'conversions') return monthlyData[m].totalConversions;
-      if (metric === 'sent') return monthlyData[m].sent;
-      return 0;
-    };
-
-    if (this.charts.monthly) {
-      this.charts.monthly.destroy();
+    if (!groups[month]) {
+      groups[month] = {
+        count: 0,
+        opens: 0,
+        clicks: 0,
+        conversions: 0,
+        revenue: 0,
+        sent: 0
+      };
     }
 
-    this.charts.monthly = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: months,
-        datasets: [{
-          label: this.getMetricLabel(metric),
-          data: months.map(m => getData(m)),
-          backgroundColor: 'rgba(99, 102, 241, 0.8)',
-          borderRadius: 4
-        }]
-      },
-      options: this.getChartOptions()
-    });
+    groups[month].count++;
+    groups[month].opens += c.openRate; // Summing rates to average later
+    groups[month].clicks += c.clickRate;
+    groups[month].conversions += c.conversions;
+    groups[month].revenue += c.revenue;
+    groups[month].sent += c.sent;
+  });
+
+  // Calculate averages
+  Object.keys(groups).forEach(month => {
+    groups[month].avgOpen = groups[month].opens / groups[month].count;
+    groups[month].avgClick = groups[month].clicks / groups[month].count;
+    groups[month].totalConversions = groups[month].conversions;
+    groups[month].totalRevenue = groups[month].revenue;
+  });
+
+  return groups;
+}
+
+formatMonth(monthKey) {
+  const [year, month] = monthKey.split('-');
+  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  return `${months[parseInt(month) - 1]}/${year}`;
+}
+
+renderMonthlyChart(monthlyData) {
+  const ctx = document.getElementById('monthly-chart');
+  if (!ctx) return;
+
+  const months = Object.keys(monthlyData).sort((a, b) => {
+    // Custom sort for months if needed, but standard string sort might be okay for "Month Year" 
+    // strictly speaking we should parse dates, but let's keep it simple for now
+    return 0;
+  });
+
+  // Better sorting logic
+  const sortedMonths = months.sort((a, b) => {
+    // Extract month and year to compare dates
+    // This is a simplification
+    return 0;
+  });
+
+  const metric = document.getElementById('monthly-metric')?.value || 'openRate';
+
+  const getData = (m) => {
+    if (metric === 'openRate') return monthlyData[m].avgOpen;
+    if (metric === 'clickRate') return monthlyData[m].avgClick;
+    if (metric === 'conversions') return monthlyData[m].totalConversions;
+    if (metric === 'sent') return monthlyData[m].sent;
+    return 0;
+  };
+
+  if (this.charts.monthly) {
+    this.charts.monthly.destroy();
   }
 
-  // ============================================
-  // EXPORT & UTILS
-  // ============================================
-  exportChartAsImage(chartId) {
-    const canvas = document.getElementById(chartId);
-    if (!canvas) return;
+  this.charts.monthly = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: months,
+      datasets: [{
+        label: this.getMetricLabel(metric),
+        data: months.map(m => getData(m)),
+        backgroundColor: 'rgba(99, 102, 241, 0.8)',
+        borderRadius: 4
+      }]
+    },
+    options: this.getChartOptions()
+  });
+}
 
-    const url = canvas.toDataURL('image/png');
-    const link = document.createElement('a');
-    link.download = `${chartId}_${new Date().toISOString().split('T')[0]}.png`;
-    link.href = url;
-    link.click();
-  }
+// ============================================
+// EXPORT & UTILS
+// ============================================
+exportChartAsImage(chartId) {
+  const canvas = document.getElementById(chartId);
+  if (!canvas) return;
+
+  const url = canvas.toDataURL('image/png');
+  const link = document.createElement('a');
+  link.download = `${chartId}_${new Date().toISOString().split('T')[0]}.png`;
+  link.href = url;
+  link.click();
+}
 
   async exportAllCharts() {
-    const charts = ['timeline-chart', 'funnel-chart', 'top-campaigns-chart', 'monthly-chart'];
+  const charts = ['timeline-chart', 'funnel-chart', 'top-campaigns-chart', 'monthly-chart'];
 
-    for (const chartId of charts) {
-      this.exportChartAsImage(chartId);
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-
-    alert('Gráficos exportados com sucesso!');
+  for (const chartId of charts) {
+    this.exportChartAsImage(chartId);
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
 
-  togglePresentationMode() {
-    document.body.classList.toggle('presentation-mode');
+  alert('Gráficos exportados com sucesso!');
+}
 
-    const icon = document.querySelector('#presentation-mode-toggle .material-symbols-outlined');
-    const isPresentation = document.body.classList.contains('presentation-mode');
+togglePresentationMode() {
+  document.body.classList.toggle('presentation-mode');
 
-    if (icon) {
-      icon.textContent = isPresentation ? 'close_fullscreen' : 'slideshow';
-    }
+  const icon = document.querySelector('#presentation-mode-toggle .material-symbols-outlined');
+  const isPresentation = document.body.classList.contains('presentation-mode');
 
-    if (isPresentation && !document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(err => {
-        console.log('Fullscreen não suportado');
-      });
-    } else if (!isPresentation && document.fullscreenElement) {
-      document.exitFullscreen();
-    }
+  if (icon) {
+    icon.textContent = isPresentation ? 'close_fullscreen' : 'slideshow';
   }
 
-  renderTable() {
-    const filtered = this.getFilteredCampaigns();
-    const tbody = document.getElementById('campaigns-tbody');
+  if (isPresentation && !document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(err => {
+      console.log('Fullscreen não suportado');
+    });
+  } else if (!isPresentation && document.fullscreenElement) {
+    document.exitFullscreen();
+  }
+}
 
-    tbody.innerHTML = filtered.map(campaign => `
+renderTable() {
+  const filtered = this.getFilteredCampaigns();
+  const tbody = document.getElementById('campaigns-tbody');
+
+  tbody.innerHTML = filtered.map(campaign => `
       <tr>
         <td><strong>${campaign.name}</strong></td>
         <td><span class="badge badge-info">${campaign.crm}</span></td>
@@ -2027,54 +2328,54 @@ ${tips.map(t => `- ${t.replace(/<[^>]*>/g, '')}`).join('\n')}
         <td>${this.getStatusBadge(campaign.status)}</td>
       </tr>
     `).join('');
+}
+
+getStatusBadge(status) {
+  const statusLower = status.toLowerCase();
+
+  if (statusLower.includes('active') || statusLower.includes('ativa')) {
+    return '<span class="badge badge-success">Ativa</span>';
+  } else if (statusLower.includes('paused') || statusLower.includes('pausada')) {
+    return '<span class="badge badge-warning">Pausada</span>';
+  } else {
+    return '<span class="badge badge-info">Concluída</span>';
   }
+}
 
-  getStatusBadge(status) {
-    const statusLower = status.toLowerCase();
+// ============================================
+// EXPORT
+// ============================================
+exportReport() {
+  alert('Funcionalidade de exportação de relatório em PDF será implementada em breve!');
+}
 
-    if (statusLower.includes('active') || statusLower.includes('ativa')) {
-      return '<span class="badge badge-success">Ativa</span>';
-    } else if (statusLower.includes('paused') || statusLower.includes('pausada')) {
-      return '<span class="badge badge-warning">Pausada</span>';
-    } else {
-      return '<span class="badge badge-info">Concluída</span>';
-    }
-  }
+exportCSV() {
+  const filtered = this.getFilteredCampaigns();
 
-  // ============================================
-  // EXPORT
-  // ============================================
-  exportReport() {
-    alert('Funcionalidade de exportação de relatório em PDF será implementada em breve!');
-  }
+  const headers = ['Campanha', 'CRM', 'Data', 'Enviados', 'Aberturas', 'Taxa Abertura', 'Cliques', 'CTR', 'Conversões', 'Status'];
+  const rows = filtered.map(c => [
+    c.name,
+    c.crm,
+    c.date,
+    c.sent,
+    c.opens,
+    c.openRate.toFixed(2) + '%',
+    c.clicks,
+    c.clickRate.toFixed(2) + '%',
+    c.conversions,
+    c.status
+  ]);
 
-  exportCSV() {
-    const filtered = this.getFilteredCampaigns();
+  const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
 
-    const headers = ['Campanha', 'CRM', 'Data', 'Enviados', 'Aberturas', 'Taxa Abertura', 'Cliques', 'CTR', 'Conversões', 'Status'];
-    const rows = filtered.map(c => [
-      c.name,
-      c.crm,
-      c.date,
-      c.sent,
-      c.opens,
-      c.openRate.toFixed(2) + '%',
-      c.clicks,
-      c.clickRate.toFixed(2) + '%',
-      c.conversions,
-      c.status
-    ]);
-
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `campanhas_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-  }
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `campanhas_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  window.URL.revokeObjectURL(url);
+}
 }
 
 // ============================================

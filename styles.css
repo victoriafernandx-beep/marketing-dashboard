@@ -844,21 +844,6 @@ body {
 }
 
 .data-table tbody tr:hover {
-  background: var(--bg-secondary);
-}
-
-/* ============================================
-   REVENUE CHANNELS SECTION
-   ============================================ */
-.revenue-channels-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: var(--spacing-lg);
-}
-
-.revenue-channel-card {
-  background: var(--surface);
-  border-radius: var(--radius-xl);
   padding: var(--spacing-xl);
   box-shadow: var(--shadow-md);
   border: 1px solid var(--border-color);
@@ -1052,6 +1037,7 @@ body.presentation-mode .container {
 .presentation-mode .chart-card {
   box-shadow: var(--shadow-2xl);
 }
+
 /* ============================================
    CSV MAPPING MODAL
    ============================================ */
@@ -1229,4 +1215,3 @@ body.presentation-mode .container {
 .validation-error:last-child {
   margin-bottom: 0;
 }
-
