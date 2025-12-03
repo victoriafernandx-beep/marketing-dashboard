@@ -521,26 +521,37 @@ class MarketingDashboard {
   // FILE HANDLING
   // ============================================
   async handleFileSelect(event) {
-    const files = Array.from(event.target.files);
+    console.log('handleFileSelect called');
+    try {
+      const files = Array.from(event.target.files);
+      console.log('Files selected:', files.map(f => f.name));
 
-    if (files.length === 0) return;
+      if (files.length === 0) return;
 
-    for (const file of files) {
-      const fileName = file.name.toLowerCase();
+      for (const file of files) {
+        const fileName = file.name.toLowerCase();
+        console.log('Processing file:', fileName, 'Type:', file.type);
 
-      if (file.type === 'text/csv' || fileName.endsWith('.csv')) {
-        await this.parseCSV(file);
-      } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') ||
-        file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-        file.type === 'application/vnd.ms-excel') {
-        await this.parseXLSX(file);
-      } else {
-        alert(`Formato de arquivo não suportado: ${file.name}\nUse arquivos .csv, .xlsx ou .xls`);
+        if (file.type === 'text/csv' || fileName.endsWith('.csv')) {
+          console.log('Parsing as CSV...');
+          await this.parseCSV(file);
+        } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') ||
+          file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+          file.type === 'application/vnd.ms-excel') {
+          console.log('Parsing as XLSX...');
+          await this.parseXLSX(file);
+        } else {
+          console.warn('Unsupported file format:', fileName);
+          alert(`Formato de arquivo não suportado: ${file.name}\nUse arquivos .csv, .xlsx ou .xls`);
+        }
       }
-    }
 
-    this.saveDataToStorage();
-    this.showDashboard();
+      this.saveDataToStorage();
+      this.showDashboard();
+    } catch (error) {
+      console.error('Error in handleFileSelect:', error);
+      alert('Ocorreu um erro ao processar o arquivo: ' + error.message);
+    }
   }
 
   // ============================================
@@ -747,7 +758,81 @@ class MarketingDashboard {
       });
       tbody.appendChild(tr);
     });
-    table.appendChild(tbody);
+    previewDiv.innerHTML = '';
+    previewDiv.appendChild(table);
+  }
+
+  async parseCSV(file) {
+    console.log('Starting parseCSV for:', file.name);
+    return new Promise((resolve) => {
+      try {
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: async (results) => {
+            console.log('Papa Parse complete. Errors:', results.errors.length, 'Rows:', results.data.length);
+            if (results.errors.length > 0) {
+              console.warn('CSV parsing errors:', results.errors);
+            }
+
+            const headers = results.meta.fields;
+            const data = results.data;
+
+            if (!headers || headers.length === 0) {
+              alert('Erro: O arquivo CSV não possui cabeçalhos identificáveis.');
+              resolve();
+              return;
+            }
+
+            try {
+              // Check if we can auto-detect a template
+              console.log('Auto-detecting template...');
+              const detectedTemplateId = this.csvMapper.autoDetectTemplate(headers);
+              let mapping = null;
+
+              if (detectedTemplateId) {
+                console.log(`Using auto-detected template: ${detectedTemplateId}`);
+                mapping = this.csvMapper.templates[detectedTemplateId].mapping;
+              } else {
+                // Show mapping modal
+                console.log('No template detected, showing modal...');
+                mapping = await this.showMappingModal(file, headers, data);
+                console.log('Modal closed. Mapping:', mapping);
+              }
+
+              if (mapping) {
+                const campaigns = this.processParsedData(data, file.name, headers, mapping);
+
+                if (campaigns.length === 0) {
+                  alert('Aviso: Nenhuma campanha foi identificada no arquivo. Verifique se o CSV possui cabeçalhos e dados válidos.');
+                } else {
+                  alert(`${campaigns.length} campanhas importadas com sucesso!`);
+                  this.campaigns.push(...campaigns);
+                }
+              }
+            } catch (err) {
+              console.error('Error processing CSV data:', err);
+              alert('Erro ao processar dados do CSV: ' + err.message);
+            }
+
+            resolve();
+          },
+          error: (error) => {
+            console.error('Error parsing CSV:', error);
+            alert('Erro ao ler o arquivo CSV: ' + error.message);
+            resolve();
+          }
+        });
+      } catch (e) {
+        console.error('Error initiating Papa Parse:', e);
+        alert('Erro ao iniciar leitura do CSV: ' + e.message);
+        resolve();
+      }
+    });
+  }
+
+  processParsedData(data, filename, headers, mapping = null) {
+    const campaigns = [];
 
     // Normalize headers to lowercase for detection
     const lowerHeaders = headers.map(h => h.toLowerCase());
