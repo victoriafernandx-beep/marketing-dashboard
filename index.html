@@ -58,57 +58,36 @@
         </div>
       </div>
     </div>
-  </header>
+    <div class="filter-group">
+      <label for="date-range-filter">Período</label>
+      <select id="date-range-filter" class="filter-select">
+        <option value="all">Todo o período</option>
+        <option value="30">Últimos 30 dias</option>
+        <option value="90">Últimos 90 dias</option>
+        <option value="180">Últimos 6 meses</option>
+        <option value="365">Último ano</option>
+      </select>
+    </div>
 
-  <main class="container">
+    <div class="filter-group">
+      <label for="status-filter">Status</label>
+      <select id="status-filter" class="filter-select">
+        <option value="all">Todos</option>
+        <option value="completed">Concluído</option>
+        <option value="sent">Enviado</option>
+        <option value="scheduled">Agendado</option>
+      </select>
+    </div>
 
-    <!-- Upload Section -->
-    <section class="upload-section" id="upload-section">
-      <div class="upload-area" id="upload-area">
-        <div class="upload-icon">📁</div>
-        <h2 class="upload-title">Arraste seus arquivos CSV aqui</h2>
-        <p class="upload-subtitle">ou clique para selecionar arquivos</p>
-        <button class="btn btn-primary" type="button">
-          <span class="material-symbols-outlined">upload_file</span>
-          Selecionar Arquivos (CSV ou XLSX)
-        </button>
-        <input type="file" id="file-input" class="file-input" accept=".csv,.xlsx,.xls" multiple>
-      </div>
-    </section>
-
-    <!-- Filters Section -->
-    <section class="filters-section hidden" id="filters-section">
-      <div class="filters-container">
-        <div class="filter-group">
-          <label for="date-range-filter">Período</label>
-          <select id="date-range-filter" class="filter-select">
-            <option value="all">Todo o período</option>
-            <option value="30">Últimos 30 dias</option>
-            <option value="90">Últimos 90 dias</option>
-            <option value="180">Últimos 6 meses</option>
-            <option value="365">Último ano</option>
-          </select>
-        </div>
-
-        <div class="filter-group">
-          <label for="status-filter">Status</label>
-          <select id="status-filter" class="filter-select">
-            <option value="all">Todos</option>
-            <option value="completed">Concluído</option>
-            <option value="sent">Enviado</option>
-            <option value="scheduled">Agendado</option>
-          </select>
-        </div>
-
-        <div class="filter-group">
-          <label for="campaign-type-filter">Tipo</label>
-          <select id="campaign-type-filter" class="filter-select">
-            <option value="all">Todos</option>
-            <option value="email">Email Marketing</option>
-            <option value="automation">Automação</option>
-          </select>
-        </div>
-      </div>
+    <div class="filter-group">
+      <label for="campaign-type-filter">Tipo</label>
+      <select id="campaign-type-filter" class="filter-select">
+        <option value="all">Todos</option>
+        <option value="email">Email Marketing</option>
+        <option value="automation">Automação</option>
+      </select>
+    </div>
+    </div>
     </section>
 
     <!-- Metrics Section -->
@@ -279,93 +258,93 @@
       </div>
     </section>
 
-  </main>
+    </main>
 
-  <!-- CSV Mapping Modal -->
-  <div class="modal hidden" id="csv-mapping-modal">
-    <div class="modal-overlay" id="modal-overlay"></div>
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 class="modal-title">⚙️ Configurar Mapeamento de Colunas</h2>
-        <button class="btn-icon modal-close" id="modal-close-btn">
-          <span class="material-symbols-outlined">close</span>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <!-- Template Selection -->
-        <div class="mapping-section">
-          <div class="mapping-section-header">
-            <h3>📋 Template</h3>
-            <p class="mapping-section-subtitle">Selecione um template pré-definido ou crie um novo</p>
-          </div>
-          <div class="template-selector">
-            <select id="template-select" class="filter-select">
-              <option value="">Criar novo mapeamento</option>
-              <option value="edrone">Edrone</option>
-              <option value="rd_station">RD Station</option>
-              <option value="google_ads">Google Ads</option>
-              <option value="facebook_ads">Facebook Ads</option>
-              <option value="mailchimp">Mailchimp</option>
-            </select>
-          </div>
+    <!-- CSV Mapping Modal -->
+    <div class="modal hidden" id="csv-mapping-modal">
+      <div class="modal-overlay" id="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">⚙️ Configurar Mapeamento de Colunas</h2>
+          <button class="btn-icon modal-close" id="modal-close-btn">
+            <span class="material-symbols-outlined">close</span>
+          </button>
         </div>
 
-        <!-- Column Mapping -->
-        <div class="mapping-section">
-          <div class="mapping-section-header">
-            <h3>🔗 Mapeamento de Colunas</h3>
-            <p class="mapping-section-subtitle">Mapeie as colunas do seu CSV para as métricas do dashboard</p>
+        <div class="modal-body">
+          <!-- Template Selection -->
+          <div class="mapping-section">
+            <div class="mapping-section-header">
+              <h3>📋 Template</h3>
+              <p class="mapping-section-subtitle">Selecione um template pré-definido ou crie um novo</p>
+            </div>
+            <div class="template-selector">
+              <select id="template-select" class="filter-select">
+                <option value="">Criar novo mapeamento</option>
+                <option value="edrone">Edrone</option>
+                <option value="rd_station">RD Station</option>
+                <option value="google_ads">Google Ads</option>
+                <option value="facebook_ads">Facebook Ads</option>
+                <option value="mailchimp">Mailchimp</option>
+              </select>
+            </div>
           </div>
 
-          <div class="mapping-grid" id="mapping-grid">
+          <!-- Column Mapping -->
+          <div class="mapping-section">
+            <div class="mapping-section-header">
+              <h3>🔗 Mapeamento de Colunas</h3>
+              <p class="mapping-section-subtitle">Mapeie as colunas do seu CSV para as métricas do dashboard</p>
+            </div>
+
+            <div class="mapping-grid" id="mapping-grid">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Data Preview -->
+          <div class="mapping-section">
+            <div class="mapping-section-header">
+              <h3>👁️ Preview dos Dados</h3>
+              <p class="mapping-section-subtitle">Primeiras 3 linhas do arquivo</p>
+            </div>
+            <div class="data-preview" id="data-preview">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Validation Messages -->
+          <div class="validation-messages hidden" id="validation-messages">
             <!-- Dynamically populated -->
           </div>
         </div>
 
-        <!-- Data Preview -->
-        <div class="mapping-section">
-          <div class="mapping-section-header">
-            <h3>👁️ Preview dos Dados</h3>
-            <p class="mapping-section-subtitle">Primeiras 3 linhas do arquivo</p>
-          </div>
-          <div class="data-preview" id="data-preview">
-            <!-- Dynamically populated -->
-          </div>
-        </div>
-
-        <!-- Validation Messages -->
-        <div class="validation-messages hidden" id="validation-messages">
-          <!-- Dynamically populated -->
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancel-mapping-btn">
+            <span class="material-symbols-outlined">close</span>
+            Cancelar
+          </button>
+          <button class="btn btn-secondary" id="save-template-btn">
+            <span class="material-symbols-outlined">save</span>
+            Salvar Template
+          </button>
+          <button class="btn btn-primary" id="apply-mapping-btn">
+            <span class="material-symbols-outlined">check</span>
+            Aplicar Mapeamento
+          </button>
         </div>
       </div>
+    </div>
 
-      <div class="modal-footer">
-        <button class="btn btn-secondary" id="cancel-mapping-btn">
-          <span class="material-symbols-outlined">close</span>
-          Cancelar
-        </button>
-        <button class="btn btn-secondary" id="save-template-btn">
-          <span class="material-symbols-outlined">save</span>
-          Salvar Template
-        </button>
-        <button class="btn btn-primary" id="apply-mapping-btn">
-          <span class="material-symbols-outlined">check</span>
-          Aplicar Mapeamento
-        </button>
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <p>Marketing Analytics Dashboard © 2025 | Dados armazenados localmente no seu navegador</p>
       </div>
-    </div>
-  </div>
+    </footer>
 
-  <!-- Footer -->
-  <footer class="footer">
-    <div class="container">
-      <p>Marketing Analytics Dashboard © 2025 | Dados armazenados localmente no seu navegador</p>
-    </div>
-  </footer>
-
-  <!-- Main App Script -->
-  <script src="app.js"></script>
+    <!-- Main App Script -->
+    <script src="app.js"></script>
 
 </body>
 
