@@ -11,14 +11,13 @@
   <link rel="stylesheet" href="styles.css">
 
   <!-- Chart.js -->
-  <!-- PapaParse -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
-  <!-- html2canvas for screenshots -->
   <!-- SheetJS for XLSX support -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 
+  <!-- html2canvas for screenshots -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
   <!-- Icons (Material Symbols) -->
@@ -63,53 +62,48 @@
   <main class="container">
 
     <!-- Upload Section -->
- <!-- Upload Section -->
-<section class="upload-section" id="upload-section">
-  <div class="upload-area" id="upload-area">
-    <div class="upload-icon">📁</div>
-    <h2 class="upload-title">Arraste seus arquivos CSV aqui</h2>
-    <p class="upload-subtitle">ou clique para selecionar arquivos</p>
-    <button class="btn btn-primary" type="button" id="select-files-btn">
-      <span class="material-symbols-outlined">upload_file</span>
-      Selecionar Arquivos (CSV ou XLSX)
-    </button>
-  </div>
-  <input type="file" id="file-input" class="file-input" accept=".csv,.xlsx,.xls" multiple>
-</section>
+    <section class="upload-section" id="upload-section">
+      <div class="upload-area" id="upload-area">
+        <input type="file" id="file-input" class="file-input" accept=".csv,.xlsx,.xls" multiple>
+        <div class="upload-icon">📤</div>
+        <h2 class="upload-title">Arraste arquivos aqui ou clique para selecionar</h2>
+        <p class="upload-subtitle">Suporte a: CSV, XLSX, XLS</p>
+      </div>
+    </section>
 
-<!-- Filters Section -->
-<section class="filters-section hidden" id="filters-section">
-  <div class="filters-container">
-    <div class="filter-group">
-      <label for="date-range-filter">Período</label>
-      <select id="date-range-filter" class="filter-select">
-        <option value="all">Todo o período</option>
-        <option value="30">Últimos 30 dias</option>
-        <option value="90">Últimos 90 dias</option>
-        <option value="180">Últimos 6 meses</option>
-        <option value="365">Último ano</option>
-      </select>
-    </div>
+    <!-- Filters Section -->
+    <section class="filters-section hidden" id="filters-section">
+      <div class="filters-container">
+        <div class="filter-group">
+          <label for="date-range-filter">Período</label>
+          <select id="date-range-filter" class="filter-select">
+            <option value="all">Todo o período</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="90">Últimos 90 dias</option>
+            <option value="180">Últimos 6 meses</option>
+            <option value="365">Último ano</option>
+          </select>
+        </div>
 
-    <div class="filter-group">
-      <label for="status-filter">Status</label>
-      <select id="status-filter" class="filter-select">
-        <option value="all">Todos</option>
-        <option value="completed">Concluído</option>
-        <option value="sent">Enviado</option>
-        <option value="scheduled">Agendado</option>
-      </select>
-    </div>
+        <div class="filter-group">
+          <label for="status-filter">Status</label>
+          <select id="status-filter" class="filter-select">
+            <option value="all">Todos</option>
+            <option value="completed">Concluído</option>
+            <option value="sent">Enviado</option>
+            <option value="scheduled">Agendado</option>
+          </select>
+        </div>
 
-    <div class="filter-group">
-      <label for="campaign-type-filter">Tipo</label>
-      <select id="campaign-type-filter" class="filter-select">
-        <option value="all">Todos</option>
-        <option value="email">Email Marketing</option>
-        <option value="automation">Automação</option>
-      </select>
-    </div>
-  </div>
+        <div class="filter-group">
+          <label for="campaign-type-filter">Tipo</label>
+          <select id="campaign-type-filter" class="filter-select">
+            <option value="all">Todos</option>
+            <option value="email">Email Marketing</option>
+            <option value="automation">Automação</option>
+          </select>
+        </div>
+      </div>
     </section>
 
     <!-- Metrics Section -->
@@ -128,10 +122,6 @@
             <span class="material-symbols-outlined">content_copy</span>
             Copiar Resumo
           </button>
-          <button class="btn btn-secondary" id="export-summary-img-btn">
-            <span class="material-symbols-outlined">image</span>
-            Exportar Imagem
-          </button>
         </div>
       </div>
 
@@ -144,25 +134,29 @@
     <section class="insights-section hidden" id="insights-section">
       <div class="section-header">
         <h2 class="section-title">📊 Análise Inteligente</h2>
-        <button class="btn btn-secondary" id="export-insights-img-btn">
-          <span class="material-symbols-outlined">image</span>
-          Exportar Imagem
-        </button>
       </div>
-      <div class="chart-actions">
-        <select class="filter-select" id="timeline-metric">
-          <option value="opens">Aberturas</option>
-          <option value="clicks">Cliques</option>
-          <option value="conversions">Conversões</option>
-        </select>
-        <button class="btn-icon export-chart-btn" data-chart="timeline-chart" title="Exportar gráfico">
-          <span class="material-symbols-outlined">image</span>
-        </button>
+      <div class="insights-grid" id="insights-grid">
+        <!-- Insights will be dynamically generated -->
       </div>
-      </div>
-      <div class="chart-container">
-        <canvas id="timeline-chart"></canvas>
-      </div>
+
+      <!-- Timeline Chart -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3 class="chart-title">Evolução Temporal</h3>
+          <div class="chart-actions">
+            <select class="filter-select" id="timeline-metric">
+              <option value="opens">Aberturas</option>
+              <option value="clicks">Cliques</option>
+              <option value="conversions">Conversões</option>
+            </select>
+            <button class="btn-icon export-chart-btn" data-chart="timeline-chart" title="Exportar gráfico">
+              <span class="material-symbols-outlined">image</span>
+            </button>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="timeline-chart"></canvas>
+        </div>
       </div>
 
       <!-- Funnel Chart -->
@@ -200,17 +194,12 @@
           <canvas id="top-campaigns-chart"></canvas>
         </div>
       </div>
-      </div>
     </section>
 
     <!-- Monthly Performance Section -->
     <section class="monthly-section hidden" id="monthly-section">
       <div class="section-header">
         <h2 class="section-title">📅 Desempenho Mensal</h2>
-        <button class="btn btn-secondary" id="export-monthly-img-btn">
-          <span class="material-symbols-outlined">image</span>
-          Exportar Imagem
-        </button>
       </div>
 
       <div class="monthly-comparison" id="monthly-comparison">
@@ -227,7 +216,7 @@
               <option value="conversions">Conversões</option>
               <option value="sent">Emails Enviados</option>
             </select>
-            <button class="btn-icon" id="export-monthly-chart-btn" title="Exportar gráfico">
+            <button class="btn-icon export-chart-btn" id="export-monthly-chart-btn" title="Exportar gráfico">
               <span class="material-symbols-outlined">image</span>
             </button>
           </div>
@@ -316,7 +305,7 @@
         <div class="mapping-section">
           <div class="mapping-section-header">
             <h3>🔗 Mapeamento de Colunas</h3>
-            <p class="mapping-section-subtitle">Mapeie as colunas do seu CSV para as métricas do dashboard</p>
+            <p class="mapping-section-subtitle">Mapeie as colunas do seu arquivo para as métricas do dashboard</p>
           </div>
 
           <div class="mapping-grid" id="mapping-grid">
