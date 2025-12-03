@@ -543,38 +543,211 @@ class MarketingDashboard {
     this.showDashboard();
   }
 
-  async parseCSV(file) {
+  // ============================================
+  // CSV MAPPING MODAL LOGIC
+  // ============================================
+
+  async showMappingModal(file, headers, sampleData) {
     return new Promise((resolve) => {
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          if (results.errors.length > 0) {
-            console.warn('CSV parsing errors:', results.errors);
-          }
+      const modal = document.getElementById('csv-mapping-modal');
+      const overlay = document.getElementById('modal-overlay');
+      const closeBtn = document.getElementById('modal-close-btn');
+      const cancelBtn = document.getElementById('cancel-mapping-btn');
+      const applyBtn = document.getElementById('apply-mapping-btn');
+      const saveTemplateBtn = document.getElementById('save-template-btn');
+      const templateSelect = document.getElementById('template-select');
 
-          const campaigns = this.processParsedData(results.data, file.name, results.meta.fields);
+      // Store current file data
+      this.currentFile = { file, headers, sampleData };
 
-          if (campaigns.length === 0) {
-            alert('Aviso: Nenhuma campanha foi identificada no arquivo. Verifique se o CSV possui cabeçalhos e dados válidos.');
-            console.warn('CSV parsing returned 0 campaigns');
-          } else {
-            alert(`${campaigns.length} campanhas importadas com sucesso!`);
-            this.campaigns.push(...campaigns);
-          }
-          resolve();
-        },
-        error: (error) => {
-          console.error('Error parsing CSV:', error);
-          alert('Erro ao ler o arquivo CSV: ' + error.message);
-          resolve();
+      // Detect column types
+      const columnTypes = this.csvMapper.detectColumnTypes(headers, sampleData);
+      this.currentFile.columnTypes = columnTypes;
+
+      // Try to auto-detect template
+      const detectedTemplateId = this.csvMapper.autoDetectTemplate(headers);
+      if (detectedTemplateId) {
+        templateSelect.value = detectedTemplateId;
+        this.csvMapper.currentMapping = this.csvMapper.templates[detectedTemplateId].mapping;
+      } else {
+        templateSelect.value = '';
+        // Suggest mapping based on headers
+        this.csvMapper.currentMapping = this.csvMapper.suggestMapping(headers);
+      }
+
+      // Populate modal
+      this.populateMappingModal();
+      this.updateMappingPreview();
+
+      // Show modal
+      modal.classList.remove('hidden');
+
+      // Event Listeners
+      const closeModal = () => {
+        modal.classList.add('hidden');
+        resolve(null); // Return null if cancelled
+      };
+
+      const applyMapping = () => {
+        const mapping = this.getMappingFromUI();
+        const validation = this.csvMapper.validateMapping(mapping, columnTypes);
+
+        if (!validation.valid) {
+          const validationDiv = document.getElementById('validation-messages');
+          validationDiv.innerHTML = validation.errors.map(e =>
+            `<div class="validation-error"><span class="material-symbols-outlined">error</span>${e}</div>`
+          ).join('');
+          validationDiv.classList.remove('hidden');
+          return;
+        }
+
+        modal.classList.add('hidden');
+        resolve(mapping);
+      };
+
+      // Remove previous listeners to avoid duplicates
+      const newApplyBtn = applyBtn.cloneNode(true);
+      applyBtn.parentNode.replaceChild(newApplyBtn, applyBtn);
+
+      const newCancelBtn = cancelBtn.cloneNode(true);
+      cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+      const newCloseBtn = closeBtn.cloneNode(true);
+      closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+
+      const newSaveTemplateBtn = saveTemplateBtn.cloneNode(true);
+      saveTemplateBtn.parentNode.replaceChild(newSaveTemplateBtn, saveTemplateBtn);
+
+      const newTemplateSelect = templateSelect.cloneNode(true);
+      templateSelect.parentNode.replaceChild(newTemplateSelect, templateSelect);
+
+      // Add new listeners
+      newApplyBtn.addEventListener('click', applyMapping);
+      newCancelBtn.addEventListener('click', closeModal);
+      newCloseBtn.addEventListener('click', closeModal);
+      overlay.addEventListener('click', closeModal);
+
+      newTemplateSelect.addEventListener('change', (e) => {
+        const templateId = e.target.value;
+        if (templateId && this.csvMapper.templates[templateId]) {
+          this.csvMapper.currentMapping = this.csvMapper.templates[templateId].mapping;
+        } else {
+          this.csvMapper.currentMapping = this.csvMapper.suggestMapping(headers);
+        }
+        this.populateMappingModal();
+      });
+
+      newSaveTemplateBtn.addEventListener('click', () => {
+        const name = prompt('Nome do Template:');
+        if (name) {
+          const mapping = this.getMappingFromUI();
+          const id = name.toLowerCase().replace(/\s+/g, '_');
+          this.csvMapper.saveTemplate(id, { name, mapping });
+
+          // Update select
+          const option = document.createElement('option');
+          option.value = id;
+          option.textContent = name;
+          newTemplateSelect.appendChild(option);
+          newTemplateSelect.value = id;
+
+          alert('Template salvo com sucesso!');
         }
       });
     });
   }
 
-  processParsedData(data, filename, headers) {
-    const campaigns = [];
+  populateMappingModal() {
+    const grid = document.getElementById('mapping-grid');
+    grid.innerHTML = '';
+
+    const fields = [
+      { key: 'campaignName', label: 'Nome da Campanha', required: true },
+      { key: 'date', label: 'Data', required: true },
+      { key: 'sent', label: 'Enviados / Impressões', required: true },
+      { key: 'opens', label: 'Aberturas / Engajamento', required: false },
+      { key: 'clicks', label: 'Cliques', required: false },
+      { key: 'conversions', label: 'Conversões', required: false },
+      { key: 'revenue', label: 'Receita / Custo', required: false },
+      { key: 'engagementType', label: 'Tipo (Email/Auto)', required: false }
+    ];
+
+    fields.forEach(field => {
+      const row = document.createElement('div');
+      row.className = 'mapping-row';
+
+      const label = document.createElement('div');
+      label.className = `mapping-label ${field.required ? 'required' : ''}`;
+      label.textContent = field.label;
+
+      const select = document.createElement('select');
+      select.className = 'filter-select mapping-select';
+      select.dataset.key = field.key;
+
+      // Add empty option
+      const emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = '-- Selecione a coluna --';
+      select.appendChild(emptyOption);
+
+      // Add column options
+      this.currentFile.headers.forEach(header => {
+        const option = document.createElement('option');
+        option.value = header;
+        option.textContent = header;
+
+        // Pre-select if matches current mapping
+        if (this.csvMapper.currentMapping && this.csvMapper.currentMapping[field.key] === header) {
+          option.selected = true;
+        }
+
+        select.appendChild(option);
+      });
+
+      row.appendChild(label);
+      row.appendChild(select);
+      grid.appendChild(row);
+    });
+  }
+
+  getMappingFromUI() {
+    const mapping = {};
+    document.querySelectorAll('.mapping-select').forEach(select => {
+      if (select.value) {
+        mapping[select.dataset.key] = select.value;
+      }
+    });
+    return mapping;
+  }
+
+  updateMappingPreview() {
+    const previewDiv = document.getElementById('data-preview');
+    const table = document.createElement('table');
+    table.className = 'preview-table';
+
+    // Header
+    const thead = document.createElement('thead');
+    const trHead = document.createElement('tr');
+    this.currentFile.headers.forEach(header => {
+      const th = document.createElement('th');
+      th.textContent = header;
+      trHead.appendChild(th);
+    });
+    thead.appendChild(trHead);
+    table.appendChild(thead);
+
+    // Body (first 3 rows)
+    const tbody = document.createElement('tbody');
+    this.currentFile.sampleData.slice(0, 3).forEach(row => {
+      const tr = document.createElement('tr');
+      this.currentFile.headers.forEach(header => {
+        const td = document.createElement('td');
+        td.textContent = row[header] || '';
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
 
     // Normalize headers to lowercase for detection
     const lowerHeaders = headers.map(h => h.toLowerCase());
@@ -582,21 +755,17 @@ class MarketingDashboard {
 
     console.log('Processing data from:', filename);
     console.log('Detected CRM:', crmName);
-    console.log('Headers:', headers);
-    console.log('Sample row:', data[0]);
+    console.log('Using mapping:', mapping);
 
     data.forEach((row, index) => {
       // Create a normalized row object where keys are lowercase for easier matching
+      // If mapping is provided, we use the raw keys from the mapping
       const normalizedRow = {};
       Object.keys(row).forEach(key => {
         normalizedRow[key.toLowerCase()] = row[key];
       });
 
-      if (index === 0) {
-        console.log('Normalized row keys:', Object.keys(normalizedRow));
-      }
-
-      const campaign = this.mapCSVRow(normalizedRow, crmName);
+      const campaign = this.mapCSVRow(row, normalizedRow, crmName, mapping);
 
       if (index === 0) {
         console.log('Mapped campaign:', campaign);
@@ -614,27 +783,47 @@ class MarketingDashboard {
   }
 
   // Modified to accept object instead of array
-  mapCSVRow(row, crm) {
-    // For Edrone: TITULO is the campaign name, CAMPANHA is the engagement type
-    const campaignName = this.findValue(row, ['titulo', 'campanha', 'nome', 'name', 'campaign', 'título', 'title']);
-    const engagementType = this.findValue(row, ['campanha', 'jornada', 'engagement']);
+  mapCSVRow(rawRow, normalizedRow, crm, mapping) {
+    let campaignName, engagementType, date, sent, opens, clicks, conversions, revenue;
+
+    if (mapping) {
+      // Use dynamic mapping
+      campaignName = rawRow[mapping.campaignName];
+      engagementType = mapping.engagementType ? rawRow[mapping.engagementType] : 'email';
+      date = rawRow[mapping.date];
+      sent = this.parseNumber(rawRow[mapping.sent]);
+      opens = mapping.opens ? this.parseNumber(rawRow[mapping.opens]) : 0;
+      clicks = mapping.clicks ? this.parseNumber(rawRow[mapping.clicks]) : 0;
+      conversions = mapping.conversions ? this.parseNumber(rawRow[mapping.conversions]) : 0;
+      revenue = mapping.revenue ? this.parseNumber(rawRow[mapping.revenue]) : 0;
+    } else {
+      // Legacy fallback (should rarely be reached now)
+      campaignName = this.findValue(normalizedRow, ['titulo', 'campanha', 'nome', 'name', 'campaign', 'título', 'title']);
+      engagementType = this.findValue(normalizedRow, ['campanha', 'jornada', 'engagement']);
+      date = this.findValue(normalizedRow, ['data', 'date', 'data_envio', 'send_date', 'created']);
+      sent = this.parseNumber(this.findValue(normalizedRow, ['envio', 'emails_enviados', 'enviados', 'sent', 'emails_sent', 'total_sent']));
+      opens = this.parseNumber(this.findValue(normalizedRow, ['aberto', 'aberturas', 'opens', 'unique_opens', 'abertos']));
+      clicks = this.parseNumber(this.findValue(normalizedRow, ['clique', 'cliques', 'clicks', 'unique_clicks']));
+      conversions = this.parseNumber(this.findValue(normalizedRow, ['pedido', 'conversões', 'conversions', 'conversoes', 'converted']));
+      revenue = this.parseNumber(this.findValue(normalizedRow, ['receita', 'revenue', 'valor', 'value']));
+    }
 
     // Map common column names to standard format
     const campaign = {
       id: Date.now() + Math.random(),
       name: campaignName,
-      engagementType: engagementType, // Store the engagement type (newsletter, carrinho_abandonado, etc.)
+      engagementType: engagementType,
       crm: crm,
-      date: this.findValue(row, ['data', 'date', 'data_envio', 'send_date', 'created']),
-      sent: this.parseNumber(this.findValue(row, ['envio', 'emails_enviados', 'enviados', 'sent', 'emails_sent', 'total_sent'])),
-      delivered: this.parseNumber(this.findValue(row, ['entregues', 'delivered', 'emails_delivered'])),
-      opens: this.parseNumber(this.findValue(row, ['aberto', 'aberturas', 'opens', 'unique_opens', 'abertos'])),
-      totalOpens: this.parseNumber(this.findValue(row, ['total_aberturas', 'total_opens'])),
-      clicks: this.parseNumber(this.findValue(row, ['clique', 'cliques', 'clicks', 'unique_clicks'])),
-      totalClicks: this.parseNumber(this.findValue(row, ['total_cliques', 'total_clicks'])),
-      conversions: this.parseNumber(this.findValue(row, ['pedido', 'conversões', 'conversions', 'conversoes', 'converted'])),
-      revenue: this.parseNumber(this.findValue(row, ['receita', 'revenue', 'valor', 'value'])),
-      status: this.findValue(row, ['status', 'state', 'estado']) || 'completed',
+      date: date,
+      sent: sent,
+      delivered: sent, // Assuming delivered = sent if not specified
+      opens: opens,
+      totalOpens: opens,
+      clicks: clicks,
+      totalClicks: clicks,
+      conversions: conversions,
+      revenue: revenue,
+      status: 'completed',
       type: this.detectCampaignTypeFromEngagement(engagementType, campaignName)
     };
 
